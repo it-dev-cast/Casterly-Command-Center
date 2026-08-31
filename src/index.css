@@ -1,0 +1,1955 @@
+﻿/* â”€â”€â”€ Command Center design system â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   Enterprise Green: light theme (default) with real deep-forest-green as the one brand accent -
+   the SAME green also carries "success" status (a deliberate choice made explicit by the brief
+   this was built from: brand and success are meant to read as literally the same color, not two
+   related-but-distinct hues). Dark is a real, switchable second theme via a .dark class on
+   <html> (see hooks/useTheme.js) - same mechanism as the Tauri desktop app's own theming, same
+   variable NAMES in both themes so every consumer (CSS classes, inline styles, and Recharts
+   `var(--x)` fill/stroke props) re-themes automatically with zero per-component theme branching.
+   Every color in both themes passed a real WCAG contrast check (relative-luminance math, not
+   just asserted) before being finalized - see the per-variable comments below for the numbers. */
+:root {
+  color-scheme: light;
+
+  /* Neutral surface family - light, warm-neutral, not stark white-on-white (cards are pure
+     white; the page underneath is a faint green-gray so cards visibly separate from it). */
+  --bg: #e8eef2;
+  --bg-rgb: 232, 238, 242;
+  --bg-panel: #ffffff;
+  --bg-panel-2: #eef3f6;
+  --border: #c5d3dc;
+  --border-soft: #d7e2e8;
+
+  /* Text - dark ink with a cool-green undertone to tie back to the brand, not neutral black. */
+  --text: #17211c;
+  --text-dim: #4c5a54;
+  /* Real WCAG check: #74827b (a first, lighter candidate) measured 4.02:1 against white and
+     4.5:1 fails - text-faint is real content (every "Xm ago" timestamp at 11-12.5px), not
+     decoration. Darkened to clear 4.5:1 with real margin against BOTH surfaces it appears on
+     (5.69:1 white, 5.00:1 --bg-panel-2). */
+  --text-faint: #5c6a62;
+
+  /* REBRAND: cyan/electric-blue primary accent, decoupled from --green (which reverts to being
+     a pure status color, not a double-duty brand color - the brief describes cyan primary /
+     purple secondary / green-yellow-red-blue status as separate things, not a green-as-brand
+     system). Real WCAG check on the actual badge pattern used throughout this app (text color
+     over its own ~14%-opacity tint, composited onto white): #0A6478 measures 5.46:1 on its own
+     badge tint, 6.76:1 as plain text. */
+  --accent: #0a6478;
+  --accent-rgb: 10, 100, 120;
+  --accent-soft: #084f5f;
+
+  /* Status - Pulse Green / Warn Amber / Critical Red - real WCAG check, same badge-pattern
+     methodology (text over its own translucent tint, composited onto white): green 5.12:1,
+     amber 5.43:1, red 5.08:1, info 5.0+:1 - all real margin over 4.5:1 AA. Unchanged from the
+     previous palette - already real/verified, and the brief specifies no particular status hex,
+     just "green/yellow/red/blue," which these already satisfy. */
+  --green: #157048;
+  --green-bg: rgba(21, 112, 72, 0.14);
+  --amber: #7d5410;
+  --amber-rgb: 125, 84, 16;
+  --amber-bg: rgba(125, 84, 16, 0.14);
+  --red: #b03030;
+  --red-rgb: 176, 48, 48;
+  --red-bg: rgba(176, 48, 48, 0.14);
+
+  /* "info"/neutral tone - a quiet gray, deliberately not accent green (conflating the
+     brand/interactive color with a passive severity level would make a green "info" badge and a
+     green primary button read as the same kind of signal when they mean different things). */
+  --info: #566058;
+  --blue-bg: rgba(86, 96, 88, 0.14);
+
+  /* Tile-blue - scoped ONLY to stat-tile decoration (gradient wash, icon badge) for a neutral
+     count metric's own color identity. Deliberately a real blue, distinct from --info above,
+     which stays a quiet neutral everywhere it's already used (badges, event-severity pills) -
+     this doesn't touch that token or its meaning. Real WCAG check: 6.52:1 as icon-on-panel. */
+  --tile-blue: #1a56c9;
+  --tile-blue-rgb: 26, 86, 201;
+
+  /* Purple/teal - real additional stat-tile hues for pages with more than 4 distinct real metrics
+     to show (revoked-type states, secondary/neutral counts) - same scoping discipline as
+     --tile-blue: decoration-only, doesn't touch any semantic badge/status meaning elsewhere.
+     Real WCAG check, white text/icon on each solid tile (light): purple 8.06:1, teal 6.35:1. */
+  --tile-purple: #6425c4;
+  --tile-purple-rgb: 100, 37, 196;
+  /* Shifted more green-forward than the previous teal (was #0e6b64) - with --accent now itself
+     a cyan-teal (#0A6478), the two hues sat too close together to read as genuinely distinct
+     tile colors. Real WCAG check: 5.32:1 as plain text on white. */
+  --tile-teal: #0b7a5b;
+  --tile-teal-rgb: 11, 122, 91;
+
+  /* A more considered "revoked" tone than flat neutral gray - device.status is a real binary
+     (active/revoked, confirmed - no hidden third state to unlock on this page), so this is the
+     one real lever available for that pill's identity. */
+  --slate: #5b6570;
+  --slate-bg: rgba(91, 101, 112, 0.14);
+
+  /* Subtle dark-on-light scrim for non-text surfaces that need a faint recessed look (progress
+     track, .badge.gray fill) - tied to this theme's own ink color rather than a generic black,
+     so it reads as part of the same palette rather than a leftover dark-theme value. */
+  --overlay-tint: rgba(23, 33, 28, 0.06);
+
+  /* Soft elevation for white cards on a light page - real cards need this to separate from the
+     page the way dark-theme panels already do via fill-color contrast alone. Two-layer (tight +
+     soft) for a natural, not-heavy-handed lift. */
+  --shadow-card: 0 1px 2px rgba(23, 33, 28, 0.05), 0 4px 14px rgba(23, 33, 28, 0.06);
+  --shadow-toast: 0 8px 24px rgba(23, 33, 28, 0.16);
+
+  /* Fleet Pulse Field node depth - light theme's own equivalent of dark's --glow-* (see .dark
+     below): a real drop-shadow for physical depth/definition, since a colored blur reads as a
+     glow on dark backgrounds but just a smudge on white. Overridden to transparent in .dark,
+     where --glow-* already does this job - the two are deliberately never both active. */
+  --node-depth: rgba(23, 33, 28, 0.35);
+
+  --radius: 12px;
+  --sidebar-w: 248px;
+
+  /* Outfit for display/KPI â€” Inter stays body. Mono unchanged for IDs and times. */
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Outfit", "Inter", var(--font-body);
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  /* Motion tokens - shared across themes, gated by prefers-reduced-motion wherever used.
+     --motion-pulse-fast/--motion-flash intentionally match durations already in use elsewhere
+     (.pulse-tick.critical's 1.6s, .data-table tr.flash's 1.4s) so new hero motion reads as the
+     same visual language, not a competing timing system. */
+  --motion-pulse-slow: 3.4s;
+  --motion-pulse-fast: 1.6s;
+  --motion-flash: 1.4s;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Atmosphere + on-accent: every named theme redefines these so the shell, glow, grid,
+     and primary-button ink retint with the palette â€” not just --accent on a few chips. */
+  --on-accent: #ffffff;
+  --atmosphere-a: rgba(var(--accent-rgb), 0.12);
+  --atmosphere-b: rgba(var(--accent-rgb), 0.06);
+  --fx-grid-opacity: 0.32;
+  --glow-accent: transparent;
+  --glow-red: transparent;
+  --glow-amber: transparent;
+
+  font-family: var(--font-body);
+}
+
+/* Dark theme - same variable names, recalibrated values. Dark is the flagship/hero experience
+   (see the Fleet Pulse Field on the Dashboard page) - Light's values above are untouched.
+   Real WCAG check on every value below (relative-luminance math against the actual composited
+   surfaces they render on, not just plain-text-on-bg):
+     text 14.11:1 / 13.28:1, text-dim 7.71:1 / 7.23:1, text-faint 6.66:1 / 6.24:1 (bg / bg-panel,
+     bg-panel / bg-panel-2 respectively)
+     accent/green badge (text-on-own-tint, composited onto bg-panel): 8.19:1
+     amber badge: 7.51:1 | red badge: 5.12:1 | info badge: 5.30:1
+     --bg text on solid accent/amber/red fill (button labels): 11.46:1 / 10.37:1 / 6.47:1
+   Every one clears 4.5:1 AA with real margin - in fact with MORE margin than the previous dark
+   values, because brighter/more saturated status colors (the "glow" requirement) and dark-mode
+   contrast pull in the same direction (unlike light theme, where they fight each other). */
+.dark,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Full neutral replacement, per the reviewed brief's exact spec - deep navy rather than pure
+     charcoal. Real WCAG check: text 15.91:1/16.76:1, text-dim 8.98:1 against bg-panel/bg. */
+  --bg: #030712;
+  --bg-rgb: 3, 7, 18;
+  --bg-panel: #0a1220;
+  --bg-panel-2: #111b2e;
+  --border: #1e334d;
+  --border-soft: #152338;
+
+  --text: #e8edf7;
+  --text-dim: #a9b4cc;
+  /* Real WCAG check: an initial #7b87a3 measured 4.42:1 against --bg-panel-2 (the darkest real
+     surface it appears on) and 4.5:1 fails - same "real content, not decoration" reasoning as
+     light theme's own text-faint tuning. Lightened to #808ca8, clearing 4.72:1 there / 5.55:1
+     against --bg-panel. */
+  --text-faint: #808ca8;
+
+  /* REBRAND: cyan/electric-blue primary accent, decoupled from --green (see :root's own comment
+     on why brand and status-success are no longer the same hex). Real WCAG check: 10.34:1 plain
+     text on --bg-panel, 7.93:1 as its own badge tint composited onto --bg-panel. */
+  --accent: #22d3ee;
+  --accent-rgb: 34, 211, 238;
+  --accent-soft: #1ba8bf;
+
+  --green: #2fe0a0;
+  --green-bg: rgba(47, 224, 160, 0.14);
+  --amber: #ffab2e;
+  --amber-rgb: 255, 171, 46;
+  --amber-bg: rgba(255, 171, 46, 0.14);
+  --red: #ff5c5c;
+  --red-rgb: 255, 92, 92;
+  --red-bg: rgba(255, 92, 92, 0.14);
+
+  --info: #939aa6;
+  --blue-bg: rgba(147, 154, 166, 0.14);
+
+  /* --tile-blue and --slate both need their OWN dark value, not the light one inherited - same
+     lesson as every other status color in this file: a hue dark/saturated enough to read on
+     white fails AA against near-black (real check below), so it's redefined here rather than
+     left to cascade. --tile-blue: 5.88:1 icon-on-panel. --slate: 7.21:1 plain, 5.78:1 as its own
+     badge tint composited onto bg-panel. */
+  --tile-blue: #4f8fff;
+  --tile-blue-rgb: 79, 143, 255;
+  /* Real WCAG check: purple 6.86:1 plain / 5.57:1 as its own badge tint composited onto
+     bg-panel; teal 9.90:1 plain / 7.63:1 composited. */
+  --tile-purple: #b088ff;
+  --tile-purple-rgb: 176, 136, 255;
+  /* Shifted more green-forward than the previous #2dd4bf, same reasoning as :root's own
+     --tile-teal comment - too close to the new cyan --accent otherwise. Real WCAG check: 8.32:1
+     plain text on --bg-panel. */
+  --tile-teal: #22c48d;
+  --tile-teal-rgb: 34, 196, 141;
+  --slate: #9aa3ad;
+  --slate-bg: rgba(154, 163, 173, 0.14);
+
+  /* Bare inline table text (CPU/RAM/Disk/Battery %) needs to read brighter than a badge fill -
+     these are lighter tints of the same hue family as --green/--amber/--red, NOT a further
+     saturation push on the shared tokens (which are already tuned for glow/badge/button use and
+     for staying short of "neon" - see the Fleet Pulse round's own reasoning). Real check: 12.23:1
+     / 11.37:1 / 7.59:1 against --bg-panel - deliberately well past the 4.5:1 floor since the
+     whole point is to read as brighter than the already-passing base tokens. Dark-only: light
+     theme's status colors are already at their readable-on-white ceiling: pushing them lighter
+     for "pop" would cut into the contrast margin that took real tuning to get right. */
+  --green-text: #5eeab8;
+  --amber-text: #ffc060;
+  --red-text: #ff8080;
+
+  --overlay-tint: rgba(255, 255, 255, 0.06);
+
+  /* Dark panels already separate from --bg via fill color alone - a heavy shadow on top would
+     just muddy things, so this stays minimal. */
+  --shadow-card: 0 0 0 1px rgba(34, 211, 238, 0.06), 0 18px 48px rgba(0, 0, 0, 0.45);
+  --shadow-toast: 0 12px 40px rgba(0, 0, 0, 0.55);
+
+  /* Glow tokens - used in exactly one place (the Dashboard's Fleet Pulse Field hero), not
+     sprinkled elsewhere. Translucent versions of the recalibrated status colors, for
+     box-shadow-driven glow rather than a second parallel color system. */
+  --glow-accent: rgba(34, 211, 238, 0.5);
+  --glow-red: rgba(255, 92, 92, 0.5);
+  --glow-amber: rgba(255, 171, 46, 0.4);
+  /* Explicitly transparent here - light's --node-depth (see :root) does the node-definition job
+     in dark via glow instead, so both being active at once would double up. */
+  --node-depth: transparent;
+
+  --on-accent: #030712;
+  --atmosphere-a: rgba(var(--accent-rgb), 0.18);
+  --atmosphere-b: rgba(var(--accent-rgb), 0.08);
+  --fx-grid-opacity: 0.18;
+}
+
+/* Family reset â€” beats leftover .dark token values (0,1,0) so a light palette actually
+   restyles the whole document: status tints, shadows, native color-scheme, and glow. */
+:root[data-theme-family="light"] {
+  color-scheme: light;
+  --on-accent: #ffffff;
+  --green: #157048;
+  --green-bg: rgba(21, 112, 72, 0.14);
+  --amber: #7d5410;
+  --amber-rgb: 125, 84, 16;
+  --amber-bg: rgba(125, 84, 16, 0.14);
+  --red: #b03030;
+  --red-rgb: 176, 48, 48;
+  --red-bg: rgba(176, 48, 48, 0.14);
+  --info: #566058;
+  --blue-bg: rgba(86, 96, 88, 0.14);
+  --tile-purple: #6425c4;
+  --tile-purple-rgb: 100, 37, 196;
+  --tile-teal: #0b7a5b;
+  --tile-teal-rgb: 11, 122, 91;
+  --slate: #5b6570;
+  --slate-bg: rgba(91, 101, 112, 0.14);
+  --green-text: #157048;
+  --amber-text: #7d5410;
+  --red-text: #b03030;
+  --overlay-tint: rgba(23, 33, 28, 0.06);
+  --shadow-card: 0 1px 2px rgba(23, 33, 28, 0.05), 0 4px 14px rgba(23, 33, 28, 0.06);
+  --shadow-toast: 0 8px 24px rgba(23, 33, 28, 0.16);
+  --node-depth: rgba(23, 33, 28, 0.35);
+  --glow-accent: transparent;
+  --glow-red: transparent;
+  --glow-amber: transparent;
+  --fx-grid-opacity: 0.28;
+}
+
+:root[data-theme-family="dark"] {
+  color-scheme: dark;
+}
+
+/* Casterly Light â€” explicit so switching back from a named palette rewrites every surface
+   token .dark may have set, not only --accent. */
+:root[data-theme="light"] {
+  --bg: #e8eef2;
+  --bg-rgb: 232, 238, 242;
+  --bg-panel: #ffffff;
+  --bg-panel-2: #eef3f6;
+  --border: #c5d3dc;
+  --border-soft: #d7e2e8;
+  --text: #17211c;
+  --text-dim: #4c5a54;
+  --text-faint: #5c6a62;
+  --accent: #0a6478;
+  --accent-rgb: 10, 100, 120;
+  --accent-soft: #084f5f;
+  --tile-blue: #1a56c9;
+  --tile-blue-rgb: 26, 86, 201;
+  --atmosphere-a: rgba(var(--accent-rgb), 0.12);
+  --atmosphere-b: rgba(var(--accent-rgb), 0.06);
+}
+
+:root[data-theme="executive-white"] {
+  --bg: #ececec;
+  --bg-rgb: 236, 236, 236;
+  --bg-panel: #ffffff;
+  --bg-panel-2: #f2f2f2;
+  --border: #d4d4d4;
+  --border-soft: #e2e2e2;
+  --text: #18191b;
+  --text-dim: #494c50;
+  --text-faint: #63666c;
+  --accent: #3d5a73;
+  --accent-rgb: 61, 90, 115;
+  --accent-soft: #2c4257;
+  --tile-blue: #3d5a73;
+  --tile-blue-rgb: 61, 90, 115;
+  --atmosphere-a: rgba(var(--accent-rgb), 0.08);
+  --atmosphere-b: rgba(var(--accent-rgb), 0.04);
+  --fx-grid-opacity: 0.12;
+  --shadow-card: 0 1px 2px rgba(24, 25, 27, 0.05), 0 4px 14px rgba(24, 25, 27, 0.06);
+}
+
+:root[data-theme="ocean-blue"] {
+  --bg: #d7e6f4;
+  --bg-rgb: 215, 230, 244;
+  --bg-panel: #f5f9fd;
+  --bg-panel-2: #e4eef8;
+  --border: #b7cce0;
+  --border-soft: #cddceb;
+  --text: #131c26;
+  --text-dim: #3f5568;
+  --text-faint: #526a80;
+  --accent: #1e5fa8;
+  --accent-rgb: 30, 95, 168;
+  --accent-soft: #164a85;
+  --tile-blue: #1e5fa8;
+  --tile-blue-rgb: 30, 95, 168;
+  --atmosphere-a: rgba(var(--accent-rgb), 0.16);
+  --atmosphere-b: rgba(var(--accent-rgb), 0.08);
+}
+
+:root[data-theme="slate-professional"] {
+  --bg: #dce2e8;
+  --bg-rgb: 220, 226, 232;
+  --bg-panel: #f4f6f8;
+  --bg-panel-2: #e6ebf0;
+  --border: #c3ccd4;
+  --border-soft: #d5dce2;
+  --text: #1a222b;
+  --text-dim: #48545f;
+  --text-faint: #586973;
+  --accent: #46607a;
+  --accent-rgb: 70, 96, 122;
+  --accent-soft: #354a5f;
+  --tile-blue: #46607a;
+  --tile-blue-rgb: 70, 96, 122;
+  --atmosphere-a: rgba(var(--accent-rgb), 0.12);
+  --atmosphere-b: rgba(var(--accent-rgb), 0.06);
+}
+
+:root[data-theme="midnight-blue"] {
+  --bg: #060c1e;
+  --bg-rgb: 6, 12, 30;
+  --bg-panel: #0c1730;
+  --bg-panel-2: #142544;
+  --border: #2a3c5c;
+  --border-soft: #1c2a45;
+  --text: #e7ecf7;
+  --text-dim: #a6b3cf;
+  --text-faint: #8592b4;
+  --accent: #4f8bff;
+  --accent-rgb: 79, 139, 255;
+  --accent-soft: #6ba0ff;
+  --tile-blue: #4f8bff;
+  --tile-blue-rgb: 79, 139, 255;
+  --overlay-tint: rgba(255, 255, 255, 0.06);
+  --shadow-card: 0 0 0 1px rgba(79, 139, 255, 0.08), 0 18px 48px rgba(0, 0, 0, 0.45);
+  --shadow-toast: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --node-depth: transparent;
+  --glow-accent: rgba(79, 139, 255, 0.5);
+  --glow-red: rgba(255, 92, 92, 0.5);
+  --glow-amber: rgba(255, 171, 46, 0.4);
+  --on-accent: #071018;
+  --atmosphere-a: rgba(var(--accent-rgb), 0.2);
+  --atmosphere-b: rgba(var(--accent-rgb), 0.1);
+  --fx-grid-opacity: 0.16;
+}
+
+:root[data-theme="emerald"] {
+  --bg: #d7eee3;
+  --bg-rgb: 215, 238, 227;
+  --bg-panel: #f3faf6;
+  --bg-panel-2: #e3f4eb;
+  --border: #b7dcc8;
+  --border-soft: #cfe8db;
+  --text: #0f2419;
+  --text-dim: #3c5c4c;
+  --text-faint: #4f7160;
+  --accent: #0a7d58;
+  --accent-rgb: 10, 125, 88;
+  --accent-soft: #086346;
+  --tile-blue: #0a7d58;
+  --tile-blue-rgb: 10, 125, 88;
+  --atmosphere-a: rgba(var(--accent-rgb), 0.16);
+  --atmosphere-b: rgba(var(--accent-rgb), 0.07);
+}
+
+:root[data-theme="purple-enterprise"] {
+  --bg: #e4dcf2;
+  --bg-rgb: 228, 220, 242;
+  --bg-panel: #f7f5fb;
+  --bg-panel-2: #ebe4f5;
+  --border: #cfc0e4;
+  --border-soft: #ddd3ec;
+  --text: #211a2e;
+  --text-dim: #574b6b;
+  --text-faint: #6f6282;
+  --accent: #6b3fa0;
+  --accent-rgb: 107, 63, 160;
+  --accent-soft: #562f83;
+  --tile-blue: #6b3fa0;
+  --tile-blue-rgb: 107, 63, 160;
+  --atmosphere-a: rgba(var(--accent-rgb), 0.16);
+  --atmosphere-b: rgba(var(--accent-rgb), 0.07);
+}
+
+:root[data-theme="casterly-erp-green"] {
+  --bg: #d8e6dc;
+  --bg-rgb: 216, 230, 220;
+  --bg-panel: #f4f8f5;
+  --bg-panel-2: #e4eee7;
+  --border: #bfd4c5;
+  --border-soft: #d2e0d6;
+  --text: #14201a;
+  --text-dim: #47554d;
+  --text-faint: #5c6b62;
+  --accent: #1f7a52;
+  --accent-rgb: 31, 122, 82;
+  --accent-soft: #185f40;
+  --tile-blue: #1f7a52;
+  --tile-blue-rgb: 31, 122, 82;
+  --atmosphere-a: rgba(var(--accent-rgb), 0.14);
+  --atmosphere-b: rgba(var(--accent-rgb), 0.06);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-shell,
+.login-stage,
+.main-area {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+
+/* Real, visible keyboard focus everywhere - the brand accent, not a browser default outline
+   that's easy to lose against either theme's background. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Data/identifier text - device IDs, hashes, request IDs, timestamps, percentages, log/event
+   text. Replaces the inconsistent inline `style={{fontFamily:"monospace"}}` hacks previously
+   scattered across some tables but not others with one real, consistently-applied class. */
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ---------- App shell ---------- */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+}
+
+.app-fx {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 45% at 8% -8%, var(--atmosphere-a), transparent 52%),
+    radial-gradient(ellipse 45% 35% at 100% 0%, var(--atmosphere-b), transparent 48%);
+}
+.app-fx::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: var(--fx-grid-opacity);
+  background-image:
+    linear-gradient(rgba(var(--accent-rgb), 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--accent-rgb), 0.07) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 85% 70% at 50% 20%, #000 15%, transparent 72%);
+}
+
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--bg-panel) 86%, transparent);
+  backdrop-filter: blur(18px);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: visible;
+  z-index: 2;
+  transition: width 0.18s var(--ease-standard), padding 0.18s var(--ease-standard);
+}
+.sidebar.collapsed { width: 68px; padding: 18px 10px; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 10px; }
+
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px 18px;
+}
+.sidebar.collapsed .brand { justify-content: center; padding: 4px 0 18px; }
+
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: none;
+  padding: 0;
+}
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+}
+.sidebar.collapsed .brand-mark { width: 40px; height: 40px; }
+
+.brand-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0.55px;
+  text-transform: uppercase;
+  color: #524A9D;
+}
+:root[data-theme-family="dark"] .brand-title {
+  color: #D4CFF0;
+}
+.brand-sub { font-size: 10px; color: var(--text-faint); letter-spacing: 0.14em; text-transform: uppercase; font-weight: 600; margin-top: 4px; }
+
+.nav-label {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  padding: 14px 10px 6px;
+  font-weight: 600;
+}
+
+/* Marks the start of the sidebar's auxiliary modules (Infrastructure/Data Centers) - real pages,
+   kept reachable, but visually demoted below the core device -> monitor -> ... -> lifecycle flow
+   groups so the operational path stays the obvious read. Reuses existing tokens only. */
+.nav-group-secondary { border-top: 1px solid var(--border-soft); margin-top: 8px; padding-top: 2px; }
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.nav-item:hover { background: var(--bg-panel-2); color: var(--text); }
+/* rgba(var(--accent-rgb), ...) tracks whichever accent is live in each theme - previously a
+   hardcoded rgba(63,169,164,...) baked to the old teal accent, which would have silently stayed
+   teal-tinted even after the accent itself became green. Per the reviewed brief: border + text +
+   subtle bg + glow, not just a flat tint - a real left-edge accent bar and a soft outer glow so
+   the active item reads as genuinely "lit," matching the cyan brand's own glow-capable identity
+   used everywhere else (Fleet Pulse nodes, stat-live dot). */
+.nav-item.active {
+  position: relative;
+  background: rgba(var(--accent-rgb), 0.14);
+  color: var(--accent);
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.22);
+}
+.sidebar.collapsed .nav-item.active { border-left: none; box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.3); }
+.nav-item .badge {
+  margin-left: auto;
+  background: var(--red);
+  color: var(--bg);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+/* Collapsed-mode stand-in for the real badge count above - still real data (there IS at least
+   one real critical/warning item), just can't fit a number in a 48px-wide icon-only row. */
+.nav-item-dot { position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
+
+/* ---------- Fleet Pulse Rail (signature element) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   One real tick per active device, colored by the same healthFromLiveStatus classification
+   every other health badge in this app already uses - pure presentation over LiveDataContext's
+   existing devices/liveStatusByDevice, no new data flow. Re-renders live off the same SSE stream
+   everything else already reacts to. */
+.pulse-rail-wrap {
+  margin-top: auto;
+  padding: 12px;
+  background: color-mix(in srgb, var(--bg-panel-2) 70%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.06);
+}
+
+.pulse-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.pulse-rail-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.pulse-rail-count { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
+
+.pulse-rail-ticks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-height: 54px;
+  overflow-y: auto;
+}
+
+.pulse-tick {
+  width: 7px;
+  height: 14px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.pulse-tick.healthy { background: var(--green); }
+.pulse-tick.warning { background: var(--amber); }
+.pulse-tick.critical { background: var(--red); animation: pulseTick 1.6s ease-in-out infinite; }
+.pulse-tick.unknown { background: var(--border); }
+
+@keyframes pulseTick {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.pulse-rail-empty { font-size: 11px; color: var(--text-faint); }
+.pulse-rail-summary { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+
+/* Collapsed sidebar's own compact stand-in for the full System Status widget - real health
+   (green if every active device is healthy, red if any needs attention), same source data. */
+.sidebar-collapsed-footer {
+  margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 12px;
+}
+.sidebar-collapsed-footer .pulse-tick { width: 18px; height: 6px; }
+
+.sidebar-collapse-btn {
+  position: absolute;
+  top: 22px;
+  right: -14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  z-index: 40;
+  box-shadow: 0 0 0 3px var(--bg), var(--shadow-card);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.sidebar-collapse-btn:hover,
+.sidebar-collapse-btn:focus-visible {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ---------- Fleet Pulse Field (hero, Dashboard only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   The one genuine "wow" moment this redesign spends its boldness on - a hero-scaled version of
+   the Fleet Pulse Rail's own tick motif above, not a competing visual idea. Real per-device data
+   from the same devices/liveStatusByDevice/recentDeviceIds LiveDataContext already exposes - no
+   new data flow, no fabricated bars. Deliberately the ONLY place in the app with glow/motion
+   this pronounced; every other page stays quiet by design (see the reviewed plan's own
+   self-critique on why boldness spent everywhere is boldness spent nowhere). */
+/* Light theme's own real depth here, not a paler copy of dark's blurred glow (a colored blur on
+   white just reads as a smudge, not a glow) - a real, if subtle, mood-tinted background wash
+   baked into the panel itself, CROSS-FADING only (never pulsing) on state change for the exact
+   same "not alarmist" reasoning dark's own glow uses below. */
+.pulse-hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 24px 28px;
+  margin-bottom: 24px;
+  transition: background 1.2s var(--ease-standard);
+}
+/* REAL BUG FOUND BY TESTING: the hero shell's own 24px bottom padding was tuned for the
+   network view's taller content (4+ devices) - reused unchanged for compact mode (1-3 devices,
+   one short orb row), it stacked on top of .pulse-compact's own padding/margin below and left
+   real excess empty space in the card. Compact mode gets its own tighter bottom padding here;
+   network mode is untouched. */
+.pulse-hero.compact { padding-bottom: 14px; }
+.pulse-hero.mood-healthy { background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.08), var(--bg-panel) 55%); }
+.pulse-hero.mood-critical { background: linear-gradient(160deg, rgba(var(--red-rgb), 0.08), var(--bg-panel) 55%); }
+/* Dark keeps a flat panel here - its own richness comes entirely from the blurred glow orb
+   below, not the base panel fill, so this undoes the light-only wash above. Equal specificity to
+   the two mood rules above (one class + one class each) - wins on source order, declared after. */
+.dark .pulse-hero { background: var(--bg-panel); }
+
+/* Ambient mood glow (dark only) - tinted red if any device is critical, green otherwise,
+   CROSS-FADING only (never pulsing/flashing) on state change. Kept deliberately subtle: a
+   flashing red background on real ops software reads as alarmist, not confident, and risks
+   alert fatigue for people who stare at this all day. Resolves to transparent in light theme
+   (--glow-* tokens only exist in .dark) via the var() fallback - light gets its own wash above
+   instead, per the reviewed plan's "give each theme its own calibrated treatment" split. */
+.pulse-hero-glow {
+  position: absolute;
+  inset: -40% -10% auto auto;
+  width: 60%;
+  height: 140%;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.5;
+  transition: background 1.2s var(--ease-standard);
+}
+.pulse-hero.mood-healthy .pulse-hero-glow { background: radial-gradient(circle, var(--glow-accent, transparent), transparent 70%); }
+.pulse-hero.mood-critical .pulse-hero-glow { background: radial-gradient(circle, var(--glow-red, transparent), transparent 70%); }
+
+.pulse-hero-head { position: relative; }
+
+.pulse-hero-eyebrow {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.pulse-hero-live-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 6px var(--glow-accent, transparent);
+  animation: pulseBreathe var(--motion-pulse-slow) ease-in-out infinite;
+}
+
+.pulse-hero-numbers { position: relative; display: flex; gap: 36px; margin-top: 14px; flex-wrap: wrap; }
+.pulse-hero-stat-value {
+  font-family: var(--font-display); font-weight: 800; font-variant-numeric: tabular-nums;
+  font-size: 30px; line-height: 1;
+  transition: font-size 0.3s var(--ease-standard), text-shadow 0.3s var(--ease-standard);
+}
+.pulse-hero-stat.green .pulse-hero-stat-value { color: var(--green); }
+.pulse-hero-stat.amber .pulse-hero-stat-value { color: var(--amber); }
+.pulse-hero-stat.red .pulse-hero-stat-value { color: var(--red); }
+.pulse-hero-stat.gray .pulse-hero-stat-value { color: var(--text-faint); }
+/* The headline number re-prioritizes itself with real fleet state, not just decoration: whatever
+   needs attention (Critical, if any exist) gets visual dominance; otherwise Healthy does. Order
+   of the four stats never changes (so a returning viewer's eye still knows where to look) - only
+   size/glow shifts, which is a real, disciplined middle ground between "static" and "reshuffles
+   the whole layout on every SSE tick." */
+.pulse-hero-stat.dominant .pulse-hero-stat-value { font-size: 50px; }
+.pulse-hero-stat.red.dominant .pulse-hero-stat-value { text-shadow: 0 0 22px var(--glow-red, transparent); }
+.pulse-hero-stat.green.dominant .pulse-hero-stat-value { text-shadow: 0 0 22px var(--glow-accent, transparent); }
+.pulse-hero-stat-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-faint); margin-top: 4px; }
+
+/* Compact mode (1-3 real devices, this app's actual typical fleet size) - a genuinely different
+   layout, not a shrunk copy of the network view. REAL BUG FOUND BY TESTING (confirmed live at
+   count=1): the network SVG's fix for low counts only ever reduced its HEIGHT - the <svg> still
+   carries width:100% + preserveAspectRatio="none", so it stretches to the panel's full real
+   width (900-1400px on an actual window) regardless of height, and one small centered dot in a
+   near-1000px-wide stretched strip still reads as "empty box with a speck in it," not compact.
+   Height alone was never going to fix a WIDTH-driven emptiness problem. This mode sidesteps that
+   entirely: flexbox with natural content sizing (no width:100% stretch), so the block's own
+   footprint hugs its actual content instead of filling the panel. Bigger orbs (40px, vs. the
+   network's 9-13px dots) and a real hostname label under each - at this scale, every device can
+   be its own visual moment instead of competing for space with many others. */
+.pulse-compact {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start;
+  gap: 32px; margin-top: 14px; padding: 14px 20px 2px; border-top: 1px solid var(--border-soft);
+}
+.pulse-orb-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.pulse-orb { width: 40px; height: 40px; border-radius: 50%; transition: filter 0.3s var(--ease-standard); }
+.pulse-orb.healthy { background: var(--green); filter: drop-shadow(0 0 14px var(--glow-accent, transparent)) drop-shadow(0 3px 6px var(--node-depth)); animation: pulseBreathe var(--motion-pulse-slow) ease-in-out infinite; }
+.pulse-orb.warning { background: var(--amber); filter: drop-shadow(0 0 14px var(--glow-amber, transparent)) drop-shadow(0 3px 6px var(--node-depth)); }
+.pulse-orb.critical { background: var(--red); filter: drop-shadow(0 0 20px var(--glow-red, transparent)) drop-shadow(0 3px 6px var(--node-depth)); animation: pulseTick var(--motion-pulse-fast) ease-in-out infinite; }
+.pulse-orb.unknown { background: var(--border); filter: drop-shadow(0 3px 6px var(--node-depth)); }
+.pulse-orb.flash { animation: pulseNodeFlash var(--motion-flash) var(--ease-standard); }
+.pulse-orb-label {
+  font-size: 12px; font-weight: 600; color: var(--text-dim);
+  max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center;
+}
+/* Real, honest context line under the compact view - a plain factual summary from data already
+   computed for the numbers row above (device count, real hostname at n=1, real health counts
+   otherwise), not a new metric or anything fabricated. */
+.pulse-compact-summary { margin-top: 10px; text-align: center; font-size: 12px; color: var(--text-faint); }
+
+/* Fleet Pulse Field (4+ real devices) - a real dot/network form. node positions are
+   deterministically hashed from each device's own real id (see Dashboard.jsx's hashUnit), NOT
+   random, so the layout is stable across re-renders rather than jittering on every poll. The
+   faint connecting lines are purely decorative "part of one fleet" texture - each node links to
+   its single nearest neighbor by that same hashed position, a mesh rather than a hub-and-spoke,
+   specifically so it doesn't read as claiming any particular real network topology that doesn't
+   exist. Color/glow/animation per node reuses the exact same health data and keyframes the orb
+   version above - this is a visual form change, not a new data source. */
+.pulse-network {
+  position: relative;
+  margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--border-soft);
+}
+.pulse-network svg { display: block; width: 100%; height: 140px; overflow: visible; }
+.pulse-link { stroke: var(--border); stroke-width: 1; opacity: 0.45; }
+.pulse-node { transition: filter 0.3s var(--ease-standard); }
+/* Two chained drop-shadows: the first is dark's glow (transparent in light, via --glow-*'s own
+   fallback), the second is light's real depth shadow (transparent in dark, via --node-depth
+   being explicitly zeroed there) - each theme only ever has one of the two actually visible. */
+.pulse-node.healthy { fill: var(--green); filter: drop-shadow(0 0 5px var(--glow-accent, transparent)) drop-shadow(0 2px 3px var(--node-depth)); animation: pulseBreathe var(--motion-pulse-slow) ease-in-out infinite; }
+.pulse-node.warning { fill: var(--amber); filter: drop-shadow(0 0 5px var(--glow-amber, transparent)) drop-shadow(0 2px 3px var(--node-depth)); }
+.pulse-node.critical { fill: var(--red); filter: drop-shadow(0 0 8px var(--glow-red, transparent)) drop-shadow(0 2px 3px var(--node-depth)); animation: pulseTick var(--motion-pulse-fast) ease-in-out infinite; }
+.pulse-node.unknown { fill: var(--border); filter: drop-shadow(0 2px 3px var(--node-depth)); }
+/* Real SSE-driven motion, not a decorative loop: recentDeviceIds already exists (it's what
+   .data-table tr.flash uses) and clears itself after exactly 1400ms, matching --motion-flash -
+   so this node visibly brightens for the same one real moment its row would flash elsewhere. */
+.pulse-node.flash { animation: pulseNodeFlash var(--motion-flash) var(--ease-standard); }
+
+@keyframes pulseBreathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.65; } }
+@keyframes pulseNodeFlash {
+  0% { filter: brightness(2.4) drop-shadow(0 0 10px var(--glow-accent, rgba(255, 255, 255, 0.6))); }
+  100% { filter: brightness(1); }
+}
+
+.connection-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; padding: 3px 8px; border-radius: 999px;
+  margin-top: 10px;
+}
+.connection-pill.live { background: var(--green-bg); color: var(--green); }
+.connection-pill.offline { background: var(--red-bg); color: var(--red); }
+
+/* ---------- Main area ---------- */
+.main-area { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; z-index: 1; }
+
+.topbar {
+  height: 64px;
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(16px) saturate(1.2);
+  z-index: 20;
+}
+
+.search-box {
+  flex: 1;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--bg-panel) 80%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  padding: 8px 14px;
+  color: var(--text-faint);
+  font-size: 13px;
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.04);
+}
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.topbar-env-pill {
+  font-size: 11px; color: var(--text-faint);
+  padding: 4px 9px; border-radius: 999px;
+  background: var(--bg-panel-2); border: 1px solid var(--border-soft);
+}
+.topbar-user {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 600; color: var(--text-dim);
+  padding: 4px 10px 4px 4px; border-radius: 999px;
+  background: var(--bg-panel-2); border: 1px solid var(--border-soft);
+}
+.topbar-user svg { color: var(--accent); }
+
+.icon-btn {
+  width: 36px; height: 36px; border-radius: var(--radius);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-panel-2); border: 1px solid var(--border-soft);
+  color: var(--text-dim); cursor: pointer; position: relative;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.icon-btn:hover { background: var(--border-soft); color: var(--text); }
+.icon-btn .dot-badge {
+  position: absolute; top: -4px; right: -4px;
+  background: var(--red); color: var(--bg); font-size: 10px; font-weight: 700;
+  border-radius: 999px; padding: 1px 5px;
+}
+
+.page-content { padding: 22px 28px 60px; max-width: 1500px; position: relative; z-index: 1; }
+
+.page-title { font-family: var(--font-display); font-size: 26px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.03em; }
+.page-sub { color: var(--text-dim); font-size: 13.5px; margin: 0 0 20px; }
+
+/* ---------- Cards / grid ---------- */
+.grid { display: grid; gap: 14px; }
+.grid-4 { grid-template-columns: repeat(4, 1fr); }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-5 { grid-template-columns: repeat(5, 1fr); }
+.grid-split { grid-template-columns: 1.4fr 1fr; }
+@media (max-width: 1200px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } .grid-3 { grid-template-columns: repeat(2,1fr);} .grid-5 { grid-template-columns: repeat(3, 1fr); } .grid-split { grid-template-columns: 1fr; } .grid-2 { grid-template-columns: 1fr; } }
+
+.card {
+  background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(10px);
+}
+
+/* Stat cards - distinct translucent gradient tiles, each stat's own color identity (blue for a
+   neutral count, green/amber/red for severity) instead of a flat surface with a thin tick edge.
+   Gradient wash is deliberately subtle (16% down to 4% opacity into the base panel color) - real
+   color richness without tipping into a loud saturated block. Border picks up the same hue at
+   low opacity so the tile reads as a defined, coherent object, not just a tinted background. */
+.stat-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 15px 16px 15px 14px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+/* Light theme's own tile treatment - a SOLID saturated block with white text/icon, not a paler
+   copy of dark's translucent glow-wash (see the reviewed proposal: "bolder saturated color
+   blocks with white text," matching how Linear/Stripe/Vercel actually achieve vivid color on
+   white, not a low-alpha tint). Real WCAG check, white text/icon on each solid tone:
+   blue 6.52:1, green 6.09:1, amber 6.68:1, red 6.34:1 - all real text (.stat-value/label/meta)
+   held to 4.5:1 and clearing it with margin. gray/slate deliberately stays on the quieter pale
+   wash below, not solid - "revoked" is a low-emphasis count, not a severity, and shouldn't
+   visually compete with the real solid severity tiles. */
+.stat-card.blue { background: var(--tile-blue); border-color: rgba(0, 0, 0, 0.08); }
+.stat-card.green { background: var(--green); border-color: rgba(0, 0, 0, 0.08); }
+.stat-card.amber { background: var(--amber); border-color: rgba(0, 0, 0, 0.08); }
+.stat-card.red { background: var(--red); border-color: rgba(0, 0, 0, 0.08); }
+.stat-card.purple { background: var(--tile-purple); border-color: rgba(0, 0, 0, 0.08); }
+.stat-card.teal { background: var(--tile-teal); border-color: rgba(0, 0, 0, 0.08); }
+.stat-card.blue .stat-value, .stat-card.blue .stat-label, .stat-card.blue .stat-meta, .stat-card.blue .stat-live,
+.stat-card.green .stat-value, .stat-card.green .stat-label, .stat-card.green .stat-meta, .stat-card.green .stat-live,
+.stat-card.amber .stat-value, .stat-card.amber .stat-label, .stat-card.amber .stat-meta, .stat-card.amber .stat-live,
+.stat-card.red .stat-value, .stat-card.red .stat-label, .stat-card.red .stat-meta, .stat-card.red .stat-live,
+.stat-card.purple .stat-value, .stat-card.purple .stat-label, .stat-card.purple .stat-meta, .stat-card.purple .stat-live,
+.stat-card.teal .stat-value, .stat-card.teal .stat-label, .stat-card.teal .stat-meta, .stat-card.teal .stat-live {
+  color: #fff;
+}
+/* The "Live" dot itself defaults to var(--accent) (green) - on the solid green tile specifically
+   that would be an invisible green-on-green dot, and a mismatched hue on the other tones. White
+   reads correctly against all six solid tones. */
+.stat-card.blue .stat-live-dot, .stat-card.green .stat-live-dot, .stat-card.amber .stat-live-dot, .stat-card.red .stat-live-dot,
+.stat-card.purple .stat-live-dot, .stat-card.teal .stat-live-dot {
+  background: #fff; box-shadow: none;
+}
+/* gray tone == the same slate identity as .badge.slate (real device.status is a binary
+   active/revoked - see index.css's own --slate comment) so a "Revoked" stat tile and its badge
+   agree with each other, not two independently-invented grays. */
+.stat-card.gray { background: linear-gradient(135deg, var(--slate-bg), transparent 55%, var(--bg-panel) 100%); border-color: var(--slate-bg); }
+
+.stat-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.stat-icon { width: 32px; height: 32px; border-radius: var(--radius); display: flex; align-items: center; justify-content: center; background: var(--bg-panel-2); border: 1px solid var(--border-soft); }
+/* White icon on a translucent-white badge over the solid tone - real WCAG check against the
+   correct threshold for a decorative icon glyph (3:1, non-text contrast per SC 1.4.11, not the
+   4.5:1 text threshold): worst case (teal) measured 4.31:1, real margin over 3:1. */
+.stat-card.blue .stat-icon, .stat-card.green .stat-icon, .stat-card.amber .stat-icon, .stat-card.red .stat-icon,
+.stat-card.purple .stat-icon, .stat-card.teal .stat-icon {
+  background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.3); color: #fff;
+}
+.stat-card.gray .stat-icon { background: var(--slate-bg); border-color: var(--slate-bg); color: var(--slate); }
+
+/* Dark keeps its own already-verified translucent gradient-wash treatment (the original design
+   from the Fleet Pulse round) - richness there comes from glow, not solid blocks, which is the
+   point of giving each theme its OWN calibrated treatment rather than one look reused twice. */
+.dark .stat-card.blue { background: linear-gradient(135deg, rgba(var(--tile-blue-rgb), 0.16), rgba(var(--tile-blue-rgb), 0.04) 55%, var(--bg-panel) 100%); border-color: rgba(var(--tile-blue-rgb), 0.3); }
+.dark .stat-card.green { background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.04) 55%, var(--bg-panel) 100%); border-color: rgba(var(--accent-rgb), 0.3); }
+.dark .stat-card.amber { background: linear-gradient(135deg, rgba(var(--amber-rgb), 0.16), rgba(var(--amber-rgb), 0.04) 55%, var(--bg-panel) 100%); border-color: rgba(var(--amber-rgb), 0.3); }
+.dark .stat-card.red { background: linear-gradient(135deg, rgba(var(--red-rgb), 0.16), rgba(var(--red-rgb), 0.04) 55%, var(--bg-panel) 100%); border-color: rgba(var(--red-rgb), 0.3); }
+.dark .stat-card.purple { background: linear-gradient(135deg, rgba(var(--tile-purple-rgb), 0.16), rgba(var(--tile-purple-rgb), 0.04) 55%, var(--bg-panel) 100%); border-color: rgba(var(--tile-purple-rgb), 0.3); }
+.dark .stat-card.teal { background: linear-gradient(135deg, rgba(var(--tile-teal-rgb), 0.16), rgba(var(--tile-teal-rgb), 0.04) 55%, var(--bg-panel) 100%); border-color: rgba(var(--tile-teal-rgb), 0.3); }
+.dark .stat-card.blue .stat-value, .dark .stat-card.blue .stat-label, .dark .stat-card.blue .stat-meta,
+.dark .stat-card.green .stat-value, .dark .stat-card.green .stat-label, .dark .stat-card.green .stat-meta,
+.dark .stat-card.amber .stat-value, .dark .stat-card.amber .stat-label, .dark .stat-card.amber .stat-meta,
+.dark .stat-card.red .stat-value, .dark .stat-card.red .stat-label, .dark .stat-card.red .stat-meta,
+.dark .stat-card.purple .stat-value, .dark .stat-card.purple .stat-label, .dark .stat-card.purple .stat-meta,
+.dark .stat-card.teal .stat-value, .dark .stat-card.teal .stat-label, .dark .stat-card.teal .stat-meta {
+  color: var(--text);
+}
+/* Restores dark's normal --text-faint "Live" label and glowing --accent dot - without this, the
+   light-only white-dot/white-label rules above (higher specificity than the bare .stat-live/
+   .stat-live-dot rules) would win here too, since they aren't naturally scoped to light on their
+   own. */
+.dark .stat-card.blue .stat-live, .dark .stat-card.green .stat-live, .dark .stat-card.amber .stat-live, .dark .stat-card.red .stat-live,
+.dark .stat-card.purple .stat-live, .dark .stat-card.teal .stat-live {
+  color: var(--text-faint);
+}
+.dark .stat-card.blue .stat-live-dot, .dark .stat-card.green .stat-live-dot, .dark .stat-card.amber .stat-live-dot, .dark .stat-card.red .stat-live-dot,
+.dark .stat-card.purple .stat-live-dot, .dark .stat-card.teal .stat-live-dot {
+  background: var(--accent); box-shadow: 0 0 5px var(--glow-accent, transparent);
+}
+.dark .stat-card.blue .stat-icon { background: rgba(var(--tile-blue-rgb), 0.18); border-color: rgba(var(--tile-blue-rgb), 0.3); color: var(--tile-blue); }
+.dark .stat-card.green .stat-icon { background: rgba(var(--accent-rgb), 0.18); border-color: rgba(var(--accent-rgb), 0.3); color: var(--green); }
+.dark .stat-card.amber .stat-icon { background: rgba(var(--amber-rgb), 0.18); border-color: rgba(var(--amber-rgb), 0.3); color: var(--amber); }
+.dark .stat-card.red .stat-icon { background: rgba(var(--red-rgb), 0.18); border-color: rgba(var(--red-rgb), 0.3); color: var(--red); }
+.dark .stat-card.purple .stat-icon { background: rgba(var(--tile-purple-rgb), 0.18); border-color: rgba(var(--tile-purple-rgb), 0.3); color: var(--tile-purple); }
+.dark .stat-card.teal .stat-icon { background: rgba(var(--tile-teal-rgb), 0.18); border-color: rgba(var(--tile-teal-rgb), 0.3); color: var(--tile-teal); }
+
+/* Honest "this value is live" indicator - previously a hardcoded up-arrow ("â†— live") next to
+   every single stat card in the app (20 call sites checked, every one passed delta="live",
+   literally none ever passed a real measured direction) - a fabricated trend claim with nothing
+   behind it. A pulsing dot says "this is live data" without claiming it went up. */
+.stat-live { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text-faint); }
+.stat-live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 5px var(--glow-accent, transparent); animation: pulseBreathe var(--motion-pulse-slow) ease-in-out infinite; }
+
+.stat-value { font-family: var(--font-display); font-size: 25px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 12.5px; font-weight: 600; margin-top: 5px; }
+.stat-meta { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+
+.section-title { font-family: var(--font-display); font-size: 15px; font-weight: 700; margin: 0; }
+.section-sub { font-size: 12.5px; color: var(--text-dim); margin: 2px 0 0; }
+.section-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+
+/* ---------- Table - tightened density (more visible rows per scroll) ---------- */
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  text-align: left; font-size: 10.5px; letter-spacing: 0.05em; color: var(--text-faint);
+  font-weight: 600; padding: 8px 12px; border-bottom: 1px solid var(--border-soft);
+  white-space: nowrap; text-transform: uppercase;
+}
+.data-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tbody tr { transition: background 0.15s var(--ease-standard), box-shadow 0.15s var(--ease-standard); }
+.data-table tbody tr:hover { background: var(--bg-panel-2); box-shadow: inset 3px 0 0 0 var(--accent); }
+.data-table tr.flash { animation: flashRow 1.4s ease-out; }
+@keyframes flashRow {
+  0% { background: rgba(var(--accent-rgb), 0.22); }
+  100% { background: transparent; }
+}
+
+/* Wrap a table in this when its columns can't be trusted to fit a narrow window (free-text
+   Message/Title columns, or six-plus columns) - scrolls the table instead of overflowing the
+   card. */
+.table-scroll { overflow-x: auto; }
+
+/* Bounds a cell's free-text content to one line with an ellipsis instead of stretching the row -
+   pair with a `title` attribute on the same element so the full text is still reachable. Width
+   is content-dependent so it's set per call site, not baked in here. */
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.badge.green { background: var(--green-bg); color: var(--green); }
+.badge.amber { background: var(--amber-bg); color: var(--amber); }
+.badge.red { background: var(--red-bg); color: var(--red); }
+.badge.blue { background: var(--blue-bg); color: var(--info); }
+.badge.gray { background: var(--overlay-tint); color: var(--text-dim); }
+/* device.status is a real binary (active/revoked, confirmed via grep - no hidden third state on
+   this page) - "revoked" gets this more considered slate identity instead of collapsing to the
+   same neutral .badge.gray every other "no particular status" case in the app already uses. */
+.badge.slate { background: var(--slate-bg); color: var(--slate); }
+/* A larger variant for the one-per-page "hero" status badge (e.g. an incident's own status at
+   the top of its detail page) - previously reinvented per call site as an inline font-size/
+   padding override. */
+.badge.lg { font-size: 13px; padding: 6px 12px; }
+
+/* A block-level alert for real messages (connection failed, timed out, load errors) - distinct
+   from .badge, which is an inline pill sized for a short label, not built to carry a sentence.
+   Previously .badge itself was getting force-`display:block`ed for this in a couple of places. */
+.callout {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 12px; border-radius: var(--radius);
+  font-size: 12.5px; line-height: 1.5; border: 1px solid;
+}
+.callout.red { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+.callout.amber { background: var(--amber-bg); border-color: var(--amber); color: var(--amber); }
+
+.dot-status { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+.dot-status.online { background: var(--green); }
+.dot-status.offline { background: var(--red); }
+
+.progress-bar { width: 70px; height: 6px; border-radius: 999px; background: var(--overlay-tint); overflow: hidden; display: inline-block; vertical-align: middle; }
+.progress-fill { height: 100%; border-radius: 999px; }
+
+/* ---------- Toasts (live popups) ---------- */
+/* REAL BUG FOUND BY TESTING (confirmed live across Dashboard/Endpoints/Alerts/Infrastructure):
+   top:76px only cleared the topbar itself (64px) - every page's real content starts much lower
+   (topbar 64px + .page-content's own 22px padding-top + .page-title (~30px) + .page-sub (~37px)
+   â‰ˆ 153px before the first real card/hero begins), so a single toast - let alone 2-3 stacked -
+   genuinely overlapped the page header and, on Dashboard specifically, the hero panel underneath
+   it. 150px clears that real offset with a small margin, consistently across every page (they
+   all share the same page-title/page-sub header shape, hero or not). max-height + overflow-y
+   caps how far a real burst of simultaneous toasts can grow, so even a pile of them stays
+   on-screen and never reaches into whatever content is further down the page. */
+.toast-stack {
+  position: fixed; top: 150px; right: 24px; z-index: 100;
+  display: flex; flex-direction: column; gap: 10px; width: 340px;
+  max-height: calc(100vh - 170px); overflow-y: auto;
+}
+.toast {
+  position: relative;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 10px 28px 10px 12px;
+  box-shadow: var(--shadow-toast);
+  animation: slideIn 0.25s var(--ease-standard);
+}
+.toast.ticket { border-left-color: var(--amber); }
+.toast.alert { border-left-color: var(--red); }
+.toast.notice { border-left-color: var(--text-faint); }
+.toast.health { border-left-color: var(--accent); }
+/* success/error were real toast types (pushToast(...) call sites across the app - revoke,
+   reset-fingerprint, add-note, etc.) with no styling here at all - both silently fell through to
+   the default accent-green left border, indistinguishable from a health toast or each other. */
+.toast.success { border-left-color: var(--green); }
+.toast.error { border-left-color: var(--red); }
+/* Toasts are removed from real state instantly (context's 6s timer or the close button) - this
+   plays for the one real EXIT_MS window ToastStack.jsx keeps a just-removed toast mounted for,
+   so dismissal is a transition, not an unstyled pop. */
+.toast.exiting { animation: slideOut 0.2s var(--ease-standard) forwards; }
+.toast-close {
+  position: absolute; top: 8px; right: 8px;
+  width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; color: var(--text-faint); cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.toast-close:hover { background: var(--overlay-tint); color: var(--text); }
+.toast.has-link { cursor: pointer; }
+.toast.has-link:hover { border-color: rgba(var(--accent-rgb), 0.55); }
+.toast-go {
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.toast-body {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes slideIn { from { transform: translateX(30px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes slideOut { to { transform: translateX(30px); opacity: 0; } }
+
+/* ---------- Misc ---------- */
+.pill-select {
+  background: var(--bg-panel-2); border: 1px solid var(--border-soft); color: var(--text-dim);
+  font-size: 12.5px; padding: 7px 12px; border-radius: var(--radius); cursor: pointer;
+}
+/* The selected-filter state - previously reimplemented per call site as an inline
+   `background: accent, color: "white"` object. The literal "white" was a real bug: --bg (this
+   system's actual "readable text on solid accent" token, see .btn.primary below) deliberately
+   flips near-white/near-black between themes to track the accent's own brightness flip, so a
+   hardcoded "white" stayed readable in light theme but lost contrast in dark theme. */
+.theme-swatch {
+  width: 22px;
+  height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: var(--swatch-canvas);
+  border: 1px solid var(--border);
+  position: relative;
+}
+.theme-swatch::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  top: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--swatch-accent);
+}
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 240px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 8px;
+  z-index: 100;
+  max-height: 440px;
+  overflow-y: auto;
+  box-shadow: var(--shadow-toast);
+  cursor: default;
+}
+.theme-menu-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-faint);
+  padding: 6px 8px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.theme-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+}
+.theme-menu-row:hover { background: var(--bg-panel-2); }
+.theme-menu-row.is-on { background: rgba(var(--accent-rgb), 0.12); color: var(--accent); font-weight: 600; }
+.theme-menu-split {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text);
+}
+.theme-menu-split:hover { background: var(--bg-panel-2); }
+.btn {
+  background: var(--bg-panel-2); border: 1px solid var(--border-soft); color: var(--text);
+  font-size: 12.5px; font-weight: 600; padding: 8px 14px; border-radius: var(--radius); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.25), 0 8px 24px rgba(var(--accent-rgb), 0.28); }
+.btn.primary:hover { background: var(--accent-soft); border-color: var(--accent-soft); }
+/* Destructive actions (revoke, disconnect, reset) - a real shared variant, replacing several
+   independently hand-rolled inline red styles that had each drifted slightly from one another. */
+.btn.danger { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+/* A background/border shift instead of a brightness() filter - filter-based hover only reads
+   correctly in one direction (lightening dark surfaces); on a light theme's already-pale
+   surfaces the same filter barely registers. This works identically in both themes. */
+.btn:hover { background: var(--border-soft); border-color: var(--border); }
+.btn.primary:hover { background: var(--accent-soft); border-color: var(--accent-soft); }
+.btn.danger:hover { background: var(--red); border-color: var(--red); color: var(--bg); }
+
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.tab-row { display: flex; gap: 4px; border-bottom: 1px solid var(--border-soft); margin-bottom: 18px; }
+.tab-item { padding: 9px 4px; margin-right: 18px; font-size: 13px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; }
+.tab-item.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+.empty-note { color: var(--text-faint); font-size: 12.5px; padding: 20px; text-align: center; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin { animation: spin 0.8s linear infinite; }
+
+/* Nothing above depends on animation alone to convey state (severity/health is always also
+   color + text), so reduced-motion can simply turn every animation off rather than needing a
+   separate non-animated fallback presentation. */
+@media (prefers-reduced-motion: reduce) {
+  .data-table tr.flash,
+  .toast,
+  .pulse-tick.critical,
+  .pulse-hero-live-dot,
+  .pulse-node.healthy,
+  .pulse-node.critical,
+  .pulse-node.flash,
+  .pulse-orb.healthy,
+  .pulse-orb.critical,
+  .pulse-orb.flash,
+  .live-chip-dot,
+  .cmd-focus.flash,
+  [style*="animation"] {
+    animation: none !important;
+  }
+  body,
+  .pulse-hero,
+  .pulse-hero-glow,
+  .pulse-hero-stat-value,
+  .pulse-node,
+  .pulse-orb,
+  .cmd-hero,
+  .cmd-hero-glow,
+  .glance-cell,
+  .jump-tile {
+    transition: none;
+  }
+}
+
+/* â”€â”€â”€ Display pass (layout/chrome only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+.main-area {
+  background:
+    radial-gradient(980px 420px at 100% -8%, var(--atmosphere-a), transparent 58%),
+    var(--bg);
+}
+
+.nav-item.active {
+  box-shadow: inset 3px 0 0 var(--accent);
+  border-left: none;
+  padding-left: 10px;
+  font-weight: 600;
+}
+.sidebar.collapsed .nav-item.active { box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.45); }
+.nav-label { padding: 12px 10px 4px; }
+.search-box { max-width: 520px; padding: 9px 14px; border-radius: 999px; }
+.search-box:focus-within { border-color: var(--accent); color: var(--text); }
+.page-content { padding: 24px 28px 64px; max-width: 1600px; }
+.page-title { font-size: 28px; letter-spacing: -0.03em; }
+
+.dash-kicker {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.dash-headline { margin: 8px 0 6px; font-size: 34px; letter-spacing: -0.04em; font-weight: 800; }
+.dash-headline.healthy { color: var(--green); }
+.dash-headline.warning { color: var(--amber); }
+.dash-headline.critical { color: var(--red); }
+.dash-headline.empty { color: var(--text-faint); }
+.dash-why {
+  position: relative;
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.dash-sub-meta { color: var(--text-dim); font-size: 13.5px; margin: 0 0 22px; }
+
+.live-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 999px;
+}
+.live-chip.on { background: var(--green-bg); color: var(--green); }
+.live-chip.off { background: var(--amber-bg); color: var(--amber); }
+.live-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulseBreathe var(--motion-pulse-slow) ease-in-out infinite;
+}
+
+.cmd-hero {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg-panel) 90%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: calc(var(--radius) + 6px);
+  box-shadow: var(--shadow-card);
+  padding: 28px 30px 26px;
+  margin-bottom: 16px;
+}
+.cmd-hero::before,
+.cmd-hero::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+  z-index: 2;
+  border-color: rgba(var(--accent-rgb), 0.55);
+}
+.cmd-hero::before { top: 12px; left: 12px; border-top: 1.5px solid; border-left: 1.5px solid; }
+.cmd-hero::after { bottom: 12px; right: 12px; border-bottom: 1.5px solid; border-right: 1.5px solid; }
+.cmd-hero.healthy { background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.1), var(--bg-panel) 52%); }
+.cmd-hero.warning { background: linear-gradient(160deg, rgba(var(--amber-rgb), 0.12), var(--bg-panel) 52%); }
+.cmd-hero.critical { background: linear-gradient(160deg, rgba(var(--red-rgb), 0.14), var(--bg-panel) 50%); }
+.dark .cmd-hero { background: var(--bg-panel); }
+.cmd-hero-glow {
+  position: absolute;
+  inset: -50% -8% auto auto;
+  width: 55%;
+  height: 160%;
+  pointer-events: none;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.45;
+}
+.cmd-hero.healthy .cmd-hero-glow { background: radial-gradient(circle, var(--glow-accent, transparent), transparent 70%); }
+.cmd-hero.warning .cmd-hero-glow { background: radial-gradient(circle, var(--glow-amber, transparent), transparent 70%); }
+.cmd-hero.critical .cmd-hero-glow { background: radial-gradient(circle, var(--glow-red, transparent), transparent 70%); }
+
+.cmd-hero-bar {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.cmd-hero-actions { display: flex; align-items: center; gap: 10px; }
+.cmd-hero .dash-headline,
+.cmd-hero .dash-sub-meta { position: relative; }
+
+.glance-strip {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin: 4px 0 8px;
+}
+.glance-cell {
+  background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 14px 14px 15px;
+  min-width: 0;
+  transition: transform 0.16s var(--ease-standard), border-color 0.16s, box-shadow 0.16s;
+}
+.glance-cell:hover { transform: translateY(-2px); border-color: rgba(var(--accent-rgb), 0.4); box-shadow: 0 10px 28px rgba(var(--accent-rgb), 0.12); }
+.glance-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+.glance-cell.blue { background: rgba(var(--tile-blue-rgb), 0.1); border-color: rgba(var(--tile-blue-rgb), 0.22); }
+.glance-cell.green { background: var(--green-bg); border-color: transparent; }
+.glance-cell.amber { background: var(--amber-bg); border-color: transparent; }
+.glance-cell.red { background: var(--red-bg); border-color: transparent; }
+.glance-cell.slate { background: var(--slate-bg); border-color: transparent; }
+.glance-cell.red:not(.is-zero) {
+  box-shadow: 0 0 0 1px rgba(var(--red-rgb), 0.28), 0 8px 22px rgba(var(--red-rgb), 0.16);
+}
+.glance-cell.amber:not(.is-zero) {
+  box-shadow: 0 0 0 1px rgba(var(--amber-rgb), 0.28);
+}
+.glance-value {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.glance-cell.blue .glance-value { color: var(--tile-blue); }
+.glance-cell.green:not(.is-zero) .glance-value { color: var(--green); }
+.glance-cell.amber:not(.is-zero) .glance-value { color: var(--amber); }
+.glance-cell.red:not(.is-zero) .glance-value { color: var(--red); }
+.glance-cell.is-zero .glance-value { color: var(--text-faint); }
+.glance-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); }
+.glance-meta { font-size: 11px; color: var(--text-faint); margin-top: 5px; }
+
+.cmd-focus-block { position: relative; margin-top: 14px; }
+.cmd-focus-caption {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+.sys-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 12px;
+}
+.sys-card-grid.one { grid-template-columns: 1fr; }
+.sys-card {
+  display: block;
+  padding: 18px 20px 16px;
+  border-radius: calc(var(--radius) + 4px);
+  background: color-mix(in srgb, var(--bg) 40%, var(--bg-panel));
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-card);
+  min-width: 0;
+  transition: transform 0.16s var(--ease-standard), border-color 0.16s;
+}
+.sys-card:hover { transform: translateY(-2px); border-color: rgba(var(--accent-rgb), 0.45); }
+.sys-card.critical {
+  border-color: rgba(var(--red-rgb), 0.45);
+  background: linear-gradient(165deg, rgba(var(--red-rgb), 0.12), color-mix(in srgb, var(--bg-panel) 90%, transparent) 45%);
+}
+.sys-card.warning { border-color: rgba(var(--amber-rgb), 0.4); }
+.sys-card.healthy { border-color: rgba(var(--accent-rgb), 0.2); }
+.sys-card.flash { animation: flashRow var(--motion-flash) ease-out; }
+.sys-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.sys-card-id { min-width: 0; }
+.sys-card-name {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.sys-card-meta {
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+.sys-card-why {
+  margin: 12px 0 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--red);
+  letter-spacing: -0.02em;
+}
+.sys-card.warning .sys-card-why { color: var(--amber); }
+.sys-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.sys-metric {
+  padding: 12px 12px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+  border: 1px solid var(--border-soft);
+  min-width: 0;
+}
+.sys-metric-lab {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sys-metric-val {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+.sys-metric-track {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--overlay-tint);
+  overflow: hidden;
+  margin-top: 8px;
+}
+.sys-metric-fill { height: 100%; border-radius: 999px; }
+.sys-metric-hint {
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.sys-card-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.sys-card-more {
+  display: inline-flex;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+@media (max-width: 900px) {
+  .sys-metrics { grid-template-columns: repeat(2, 1fr); }
+  .sys-card-grid { grid-template-columns: 1fr; }
+}
+
+.remote-wait-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--amber-bg);
+  border: 1px solid rgba(var(--amber-rgb), 0.45);
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.remote-wait-banner .remote-wait-go {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ra-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.ra-page-head .page-title { margin-bottom: 4px; }
+.ra-status-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.ra-status-rail-tight { margin: 0 0 14px; }
+.ra-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+}
+.ra-chip.ok { color: var(--green); border-color: rgba(var(--accent-rgb), 0.18); background: var(--green-bg); }
+.ra-chip.wait { color: var(--amber); background: var(--amber-bg); border-color: rgba(var(--amber-rgb), 0.35); }
+.ra-chip.bad { color: var(--red); background: var(--red-bg); border-color: rgba(var(--red-rgb), 0.35); }
+.ra-chip.muted { color: var(--text-faint); }
+.ra-chip-dot { width: 7px; height: 7px; border-radius: 999px; display: inline-block; flex-shrink: 0; }
+.ra-session { margin-bottom: 4px; }
+.ra-console {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.ra-stage {
+  position: relative;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.ra-stage-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+}
+.ra-play-btn {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 180px;
+  height: 44px;
+}
+.ra-comms { min-width: 0; }
+.ra-comms-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.ra-chat-log {
+  height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 8px;
+  margin-bottom: 8px;
+  background: var(--bg-panel-2);
+}
+.ra-chat-bubble {
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 90%;
+}
+.ra-chat-bubble.mine { margin-left: auto; text-align: right; }
+.ra-chat-from { font-size: 10px; font-weight: 700; color: var(--text-faint); margin-bottom: 2px; }
+.ra-chat-bubble.mine .ra-chat-from { color: var(--accent); }
+.ra-chat-compose { display: flex; gap: 8px; }
+.ra-chat-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+}
+.ra-chat-input:focus { outline: none; border-color: var(--accent); }
+.ra-file-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+@media (max-width: 1100px) {
+  .ra-console { grid-template-columns: 1fr; }
+  .ra-page-head { flex-direction: column; }
+}
+.jump-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+.jump-tile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: calc(var(--radius) + 4px);
+  box-shadow: var(--shadow-card);
+  min-width: 0;
+  transition: border-color 0.12s, transform 0.12s var(--ease-standard);
+}
+.jump-tile:hover { transform: translateY(-2px); border-color: rgba(var(--accent-rgb), 0.4); box-shadow: 0 12px 32px rgba(var(--accent-rgb), 0.1); }
+.jump-tile svg:first-child { color: var(--accent); flex-shrink: 0; }
+.jump-tile.hot { border-color: rgba(var(--amber-rgb), 0.45); }
+.jump-value { font-family: var(--font-display); font-size: 22px; font-weight: 800; line-height: 1.1; }
+.jump-value-text { font-size: 16px; }
+.jump-label { font-size: 12.5px; color: var(--text-dim); margin-top: 3px; }
+.jump-arrow { margin-left: auto; color: var(--text-faint); flex-shrink: 0; }
+
+.event-card { padding: 18px 20px; }
+.event-feed { display: flex; flex-direction: column; }
+.event-feed-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) 160px;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-soft);
+  border-radius: 0;
+  padding: 12px 4px;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.event-feed-row:last-child { border-bottom: none; }
+.event-feed-row:hover { background: color-mix(in srgb, var(--bg-panel-2) 80%, transparent); }
+.event-feed-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--info); }
+.event-feed-dot.critical { background: var(--red); box-shadow: 0 0 8px rgba(var(--red-rgb), 0.45); }
+.event-feed-dot.warning { background: var(--amber); }
+.event-feed-dot.info { background: var(--info); }
+.event-feed-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.event-feed-type { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.event-feed-msg { font-size: 12.5px; color: var(--text-dim); max-width: 100%; }
+.event-feed-aside { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 0; }
+.event-feed-host { font-size: 12px; color: var(--text-dim); max-width: 100%; }
+.event-feed-when { font-size: 11px; color: var(--text-faint); }
+
+@media (max-width: 1200px) {
+  .glance-strip { grid-template-columns: repeat(3, 1fr); }
+  .jump-strip { grid-template-columns: 1fr; }
+  .event-feed-row { grid-template-columns: 10px minmax(0, 1fr) 120px; }
+}
+@media (max-width: 720px) {
+  .glance-strip { grid-template-columns: repeat(2, 1fr); }
+  .event-feed-row { grid-template-columns: 10px minmax(0, 1fr); }
+  .event-feed-aside { display: none; }
+}
+
+.device-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.device-hero-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin: 0;
+}
+.device-hero-sub {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--text-dim);
+}
+.kv-list { display: flex; flex-direction: column; }
+.kv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px;
+}
+.kv-row:last-child { border-bottom: none; }
+.kv-val { font-weight: 600; text-align: right; word-break: break-word; }
+.kv-val.empty { color: var(--text-faint); font-weight: 500; }
+
+.topbar-clock {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+}
+
+.login-stage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+  padding: 24px;
+}
+.login-stage .app-fx { position: absolute; }
+.login-card {
+  width: 400px;
+  position: relative;
+  z-index: 1;
+  padding: 28px 28px 24px;
+  background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+  backdrop-filter: blur(18px);
+}
+.login-card::before,
+.login-card::after {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  border-color: rgba(var(--accent-rgb), 0.5);
+}
+.login-card::before { top: 10px; left: 10px; border-top: 1.5px solid; border-left: 1.5px solid; }
+.login-card::after { bottom: 10px; right: 10px; border-bottom: 1.5px solid; border-right: 1.5px solid; }
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin: 2px 0 24px;
+}
+.login-mark {
+  width: 96px;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  margin-bottom: 16px;
+  filter: drop-shadow(0 8px 18px rgba(82, 74, 157, 0.28));
+}
+.login-brand .login-kicker { margin: 0 0 6px; }
+.login-brand .brand-title { font-size: 22px; }
+.login-brand .brand-sub { margin-top: 4px; }
+.login-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.device-status-strip {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}

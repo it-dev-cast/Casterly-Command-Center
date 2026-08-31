@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Casterly">
+  <g transform="translate(11.4,1.2) scale(0.0982)">
+    <rect fill="#c3db61" x="0" y="0" width="411" height="100"/>
+    <rect fill="#c3db61" x="0" y="0" width="114" height="306"/>
+    <rect fill="#c3db61" x="293" y="100" width="118" height="120"/>
+    <rect fill="#524a9d" x="0" y="323" width="114" height="306"/>
+    <rect fill="#524a9d" x="293" y="423" width="118" height="120"/>
+    <rect fill="#524a9d" x="0" y="543" width="411" height="86"/>
+  </g>
+</svg>

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/casterly-mark.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Command Centre — IT Lifecycle Management</title>
+    <!-- Applies the stored theme before first paint - without this, a returning user on a
+         non-default theme would see a flash of Casterly Light for one frame before React mounts
+         and useTheme's own effect runs. Mirrors useTheme.js's real 9-theme registry (kept as a
+         literal list here since this runs before any module import is possible) - defaults to
+         "dark" when nothing is stored, the id is unrecognized, or localStorage throws (private
+         browsing), matching useTheme.js's own default exactly. -->
+    <script>
+      (function () {
+        try {
+          var DARK_IDS = ["dark", "midnight-blue"];
+          var VALID_IDS = ["light", "dark", "system", "executive-white", "ocean-blue", "slate-professional", "midnight-blue", "emerald", "purple-enterprise", "casterly-erp-green"];
+          var v = localStorage.getItem("casterly_theme");
+          if (VALID_IDS.indexOf(v) === -1) v = "dark";
+          var effective = v === "system"
+            ? ((window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light")
+            : v;
+          var dark = DARK_IDS.indexOf(effective) !== -1;
+          var root = document.documentElement;
+          if (dark) root.classList.add("dark");
+          else root.classList.remove("dark");
+          root.setAttribute("data-theme", effective);
+          root.setAttribute("data-theme-family", dark ? "dark" : "light");
+          root.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) {}
+      })();
+    </script>
+    <!-- Real fix: "Inter" was already named in index.css's font-family stack but never actually
+         linked anywhere, so it silently fell back to the OS's system-UI sans on every real
+         machine. Per the reviewed brief, Inter now covers both body AND headings/KPI numbers
+         (IBM Plex Sans dropped - one real face, not two) - weight 800 added specifically for KPI
+         numbers/headings, which want to read as substantial, not just "bigger body text."
+         JetBrains Mono (device IDs/serials/timestamps/IPs) is unchanged, already established. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
