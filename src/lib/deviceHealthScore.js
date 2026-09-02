@@ -9,25 +9,28 @@ import { getLiveDetail } from "./liveDetail.js";
 // device is honestly reported as unavailable and excluded from that device's own score, rather
 // than defaulted to a guessed number.
 //
-// Two PRD dimensions are deliberately NOT here yet:
-//   - OS & Software Health (15%): the Windows Update pending-count now reaches the backend (see
-//     extractLiveStatusFields in telemetry-server.mjs) and is shown on Device 360, but isn't
-//     folded into this weighting yet - a deliberate, separate next step, not an oversight.
+// One PRD dimension is still deliberately NOT here:
 //   - Thermal Performance (10%): cpuTempC/gpuTempC are real when LibreHardwareMonitor happens to
 //     be installed and running on that specific machine, but that's a per-machine opt-in
 //     dependency, not a guaranteed first-party collector - coverage would be fleet-inconsistent
-//     in a way the other four dimensions aren't. Surfaced as its own separate, unscored info
+//     in a way the other five dimensions aren't. Surfaced as its own separate, unscored info
 //     line (getThermalInfo below) instead of silently missing from - or unevenly weighted into -
 //     a "composite" score.
 //
-// Weights sum to 100 across the four included dimensions (renormalized from the PRD's full
-// six-dimension model: 30/20/15 -> 40/26.7/20/13.3, keeping Hardware Integrity : Storage Wear :
-// Battery : Security in the same 30:20:15:10 ratio the PRD specifies).
+// OS & Software Health (15%) folded in now that windowsUpdatePendingCount/windowsUpdateCheckedAt
+// are confirmed real and flowing (extractLiveStatusFields in telemetry-server.mjs, shown on
+// Device 360) - see scoreOsSoftwareHealth below for the real formula.
+//
+// Weights sum to 100 across the five included dimensions (renormalized from the PRD's full
+// six-dimension model: 30/20/15/10/15 -> 33.3/22.2/16.7/11.1/16.7, keeping Hardware Integrity :
+// Storage Wear : Battery : Security : OS & Software Health in the same 30:20:15:10:15 ratio the
+// PRD specifies).
 export const HEALTH_SCORE_WEIGHTS = {
-  hardwareIntegrity: 40,
-  storageWear: 26.7,
-  battery: 20,
-  security: 13.3,
+  hardwareIntegrity: 33.3,
+  storageWear: 22.2,
+  battery: 16.7,
+  security: 11.1,
+  osSoftwareHealth: 16.7,
 };
 
 function clamp(n, min, max) {
@@ -94,18 +97,42 @@ export function scoreSecurity(securityHealthPct) {
   return { score: clamp(securityHealthPct, 0, 100), available: true };
 }
 
-// computeDeviceHealthScore renormalizes weights per device over whichever of the four dimensions
+// Real, linear decay per pending update, not a smooth percentage - a Windows Update pending
+// count is a small integer, not already a 0-100 fact the way battery/storage health are, so this
+// picks real, round, defensible numbers rather than inventing false precision: 10 points off per
+// pending update, floored at 20 (not 0) once 8+ are pending - a machine behind on updates is a
+// real, informational signal, not as severe as active hardware tampering (scoreHardwareIntegrity's
+// own floor is lower, 40, for exactly that reason - these floors are deliberately different).
+// Gated on windowsUpdateCheckedAt, not just pendingCount, since a device that has never
+// completed its first hourly check (see runWindowsUpdateCheck) has a real "unknown," not a real
+// zero - the same distinction Device 360's own Kv row for this field already makes.
+const WINDOWS_UPDATE_PENALTY_PER_PENDING = 10;
+const WINDOWS_UPDATE_SCORE_FLOOR = 20;
+
+export function scoreOsSoftwareHealth(windowsUpdatePendingCount, windowsUpdateCheckedAt) {
+  if (windowsUpdateCheckedAt == null || windowsUpdatePendingCount == null) return { score: null, available: false };
+  return {
+    score: clamp(100 - windowsUpdatePendingCount * WINDOWS_UPDATE_PENALTY_PER_PENDING, WINDOWS_UPDATE_SCORE_FLOOR, 100),
+    available: true,
+  };
+}
+
+// computeDeviceHealthScore renormalizes weights per device over whichever of the five dimensions
 // are actually available for it - a desktop with no battery isn't penalized for a dimension that
 // genuinely doesn't apply to it, the same "not applicable, not zero" principle every dimension
-// formula above already follows individually. overall is null only when ALL FOUR dimensions are
+// formula above already follows individually. overall is null only when ALL FIVE dimensions are
 // unavailable for this device - an honest "not enough real data yet" rather than a fabricated
 // default score.
-export function computeDeviceHealthScore({ device, events, batteryHealthPct, storageWearPct, securityHealthPct }) {
+export function computeDeviceHealthScore({
+  device, events, batteryHealthPct, storageWearPct, securityHealthPct,
+  windowsUpdatePendingCount, windowsUpdateCheckedAt,
+}) {
   const dimensions = {
     hardwareIntegrity: scoreHardwareIntegrity(device, events),
     storageWear: scoreStorageWear(storageWearPct),
     battery: scoreBattery(batteryHealthPct),
     security: scoreSecurity(securityHealthPct),
+    osSoftwareHealth: scoreOsSoftwareHealth(windowsUpdatePendingCount, windowsUpdateCheckedAt),
   };
 
   let weightedSum = 0;

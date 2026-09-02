@@ -82,7 +82,7 @@ function timeAgo(iso) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-// Display order/labels for the four real dimensions computeDeviceHealthScore actually scores -
+// Display order/labels for the five real dimensions computeDeviceHealthScore actually scores -
 // weights read straight from HEALTH_SCORE_WEIGHTS (deviceHealthScore.js) rather than repeated
 // here as separate numbers that could drift out of sync with the real formula.
 const HEALTH_SCORE_DIMENSIONS = [
@@ -90,6 +90,7 @@ const HEALTH_SCORE_DIMENSIONS = [
   { key: "storageWear", label: "Storage Wear" },
   { key: "battery", label: "Battery" },
   { key: "security", label: "Security" },
+  { key: "osSoftwareHealth", label: "OS & Software Health" },
 ];
 
 // PRD §9 Self-Healing v1 remote dispatch - matches backend/device_commands.go's
@@ -328,14 +329,17 @@ export default function DeviceDetail() {
   // Composite Device Health Score - real math over the same real batteryHealthPct/ssdWearPct
   // this page already displays elsewhere, plus device/events for the hardware-integrity
   // dimension (see deviceHealthScore.js's own comment on why that one's event-derived). Not
-  // computed at all while offline - three of these four dimensions are last-known live readings,
-  // and a composite built from them would look exactly as current as a genuinely live score,
-  // the one thing this number must never do (same reasoning the Health badge above already
-  // applies via deviceHealthDisplay).
+  // computed at all while offline - four of these five dimensions are last-known live readings
+  // (hardwareIntegrity is the one derived from device/events, not liveStatus), and a composite
+  // built from them would look exactly as current as a genuinely live score, the one thing this
+  // number must never do (same reasoning the Health badge above already applies via
+  // deviceHealthDisplay).
   const healthScore = deviceIsOffline
     ? { overall: null, dimensions: {} }
     : computeDeviceHealthScore({
         device, events, batteryHealthPct, storageWearPct: ssdWearPct, securityHealthPct: detail.securityHealthPct,
+        windowsUpdatePendingCount: detail.windowsUpdatePendingCount ?? null,
+        windowsUpdateCheckedAt: detail.windowsUpdateCheckedAt ?? null,
       });
   // Same offline gate as healthScore above - a frozen temperature reading from an offline
   // device is exactly the same "looks current, isn't" problem, even with its own "(real, not
@@ -459,10 +463,10 @@ export default function DeviceDetail() {
               <div>
                 <h3 className="section-title">Device Health Score</h3>
                 <p className="section-sub">
-                  Real composite across 4 of the PRD's 6 dimensions{" "}
+                  Real composite across 5 of the PRD's 6 dimensions{" "}
                   <Info
                     size={12} color="var(--text-faint)" style={{ cursor: "help", verticalAlign: -2 }}
-                    title="Hardware Integrity 40%, Storage Wear 26.7%, Battery 20%, Security 13.3% - real weights, renormalized per device over whichever of these are actually available for it. OS & Software Health and Thermal are real signals collected today but not yet folded into this weighting - shown separately below, not silently missing."
+                    title="Hardware Integrity 33.3%, Storage Wear 22.2%, Battery 16.7%, Security 11.1%, OS & Software Health 16.7% - real weights, renormalized per device over whichever of these are actually available for it. Thermal is a real signal collected today but not folded into this weighting - shown separately below, not silently missing."
                   />
                 </p>
               </div>

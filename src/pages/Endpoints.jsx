@@ -173,6 +173,8 @@ export default function Endpoints() {
         ? computeDeviceHealthScore({
             device: d, events, batteryHealthPct, storageWearPct,
             securityHealthPct: liveStatus?.detail?.securityHealthPct ?? null,
+            windowsUpdatePendingCount: liveStatus?.detail?.windowsUpdatePendingCount ?? null,
+            windowsUpdateCheckedAt: liveStatus?.detail?.windowsUpdateCheckedAt ?? null,
           })
         : { overall: null, dimensions: {} },
       // Unlike healthScore above, not gated on online/offline - this is a derived fact from

@@ -211,10 +211,18 @@ export default function Dashboard() {
       status_,
       health: deviceHealthDisplay(healthFromLiveStatus(status_), offlineDeviceIds.has(d.id)),
       batteryHealthPct,
-      healthScore: computeDeviceHealthScore({
-        device: d, events, batteryHealthPct, storageWearPct,
-        securityHealthPct: status_?.detail?.securityHealthPct ?? null,
-      }),
+      // Gated the same way Endpoints.jsx's own healthScore is - an offline device's last-known
+      // readings would otherwise look exactly as current as a genuinely live score, the one
+      // thing this number must never do (activeDevices above already guarantees d.status ===
+      // "active", so only offlineDeviceIds needs checking here).
+      healthScore: !offlineDeviceIds.has(d.id)
+        ? computeDeviceHealthScore({
+            device: d, events, batteryHealthPct, storageWearPct,
+            securityHealthPct: status_?.detail?.securityHealthPct ?? null,
+            windowsUpdatePendingCount: status_?.detail?.windowsUpdatePendingCount ?? null,
+            windowsUpdateCheckedAt: status_?.detail?.windowsUpdateCheckedAt ?? null,
+          })
+        : { overall: null, dimensions: {} },
     };
   });
 
