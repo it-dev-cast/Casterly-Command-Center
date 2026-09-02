@@ -99,6 +99,7 @@ const REMEDIATION_ACTIONS = [
   { id: "flush-dns", label: "Flush DNS Cache" },
   { id: "clean-temp", label: "Clean Temp Files" },
   { id: "restart-service", label: "Restart Print Spooler" },
+  { id: "clear-teams-cache", label: "Clear Teams Cache" },
 ];
 
 const TABS = [
