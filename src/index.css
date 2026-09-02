@@ -1576,7 +1576,7 @@ select:focus-visible,
 .sys-card.warning .sys-card-why { color: var(--amber); }
 .sys-metrics {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 10px;
 }
 .sys-metric {
@@ -1631,7 +1631,7 @@ select:focus-visible,
   color: var(--accent);
 }
 @media (max-width: 900px) {
-  .sys-metrics { grid-template-columns: repeat(2, 1fr); }
+  .sys-metrics { grid-template-columns: repeat(3, 1fr); }
   .sys-card-grid { grid-template-columns: 1fr; }
 }
 

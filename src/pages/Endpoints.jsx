@@ -5,9 +5,10 @@ import GlanceCell from "../components/GlanceCell.jsx";
 import { useLiveData, healthFromLiveStatus, getUsageTextColor, CPU_USAGE_THRESHOLDS, RAM_USAGE_THRESHOLDS, DISK_USAGE_THRESHOLDS } from "../context/LiveDataContext.jsx";
 import { useDialog } from "../context/DialogContext.jsx";
 import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
+import { computeDeviceHealthScore, healthScoreTone } from "../lib/deviceHealthScore.js";
 import { api } from "../lib/api.js";
-import { latestBatteryHealthPct, batteryHealthColor } from "../lib/batteryHealth.js";
-import { getLiveDetail, liveBatteryHealthPct } from "../lib/liveDetail.js";
+import { latestBatteryHealthPct, latestSsdWearPct, batteryHealthColor } from "../lib/batteryHealth.js";
+import { getLiveDetail, liveBatteryHealthPct, liveSsdWearPct } from "../lib/liveDetail.js";
 
 function timeAgo(iso) {
   if (!iso) return "Not available";
@@ -58,11 +59,11 @@ function SortHeader({ label, sortKey, sort, onSort, style }) {
 }
 
 function exportToCsv(rows) {
-  const headers = ["Device ID", "Hostname", "Tags", "CPU %", "RAM %", "Disk %", "Battery Health %", "Health", "Connection", "Status", "Enrolled", "Last Seen"];
+  const headers = ["Device ID", "Hostname", "Tags", "CPU %", "RAM %", "Disk %", "Battery Health %", "Health", "Health Score", "Connection", "Status", "Enrolled", "Last Seen"];
   const lines = rows.map((d) => [
     d.id, d.hostname, (d.tags || []).join(";"),
     d.liveStatus?.cpuPct ?? "", d.liveStatus?.ramPct ?? "", d.liveStatus?.diskPct ?? "", d.batteryHealthPct ?? "",
-    d.health, d.connection ?? "", d.status, d.enrolledAt || "", d.lastSeenAt || "",
+    d.health, d.healthScore?.overall ?? "", d.connection ?? "", d.status, d.enrolledAt || "", d.lastSeenAt || "",
   ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","));
   const csv = [headers.join(","), ...lines].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -95,17 +96,19 @@ export default function Endpoints() {
   const [busyId, setBusyId] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [batteryHealthById, setBatteryHealthById] = useState({});
+  // Both derived from the same one real per-device snapshot fetch below - not two separate
+  // fetches for two fields that already live on the same rows.
+  const [snapshotHealthById, setSnapshotHealthById] = useState({});
 
   useEffect(() => {
     if (!token) return;
     const active = devices.filter((d) => d.status === "active");
-    if (active.length === 0) { setBatteryHealthById({}); return; }
+    if (active.length === 0) { setSnapshotHealthById({}); return; }
     Promise.all(active.map((d) =>
       api.getDeviceMetricSnapshots(token, d.id)
-        .then((snaps) => [d.id, latestBatteryHealthPct(snaps)])
-        .catch(() => [d.id, null])
-    )).then((pairs) => setBatteryHealthById(Object.fromEntries(pairs)));
+        .then((snaps) => [d.id, { batteryHealthPct: latestBatteryHealthPct(snaps), ssdWearPct: latestSsdWearPct(snaps) }])
+        .catch(() => [d.id, { batteryHealthPct: null, ssdWearPct: null }])
+    )).then((pairs) => setSnapshotHealthById(Object.fromEntries(pairs)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, devices.length]);
 
@@ -150,14 +153,29 @@ export default function Endpoints() {
   for (const e of events) {
     if (!(e.deviceId in lastEventByDevice)) lastEventByDevice[e.deviceId] = e;
   }
-  const withHealth = devices.map((d) => ({
-    ...d,
-    liveStatus: liveStatusByDevice[d.id],
-    health: deviceHealthDisplay(healthFromLiveStatus(liveStatusByDevice[d.id]), offlineDeviceIds.has(d.id)),
-    lastEvent: lastEventByDevice[d.id],
-    connection: d.status !== "active" ? null : offlineDeviceIds.has(d.id) ? "offline" : "online",
-    batteryHealthPct: liveBatteryHealthPct(liveStatusByDevice[d.id], batteryHealthById[d.id] ?? null),
-  }));
+  const withHealth = devices.map((d) => {
+    const liveStatus = liveStatusByDevice[d.id];
+    const batteryHealthPct = liveBatteryHealthPct(liveStatus, snapshotHealthById[d.id]?.batteryHealthPct);
+    const storageWearPct = liveSsdWearPct(liveStatus, snapshotHealthById[d.id]?.ssdWearPct);
+    return {
+      ...d,
+      liveStatus,
+      health: deviceHealthDisplay(healthFromLiveStatus(liveStatus), offlineDeviceIds.has(d.id)),
+      lastEvent: lastEventByDevice[d.id],
+      connection: d.status !== "active" ? null : offlineDeviceIds.has(d.id) ? "offline" : "online",
+      batteryHealthPct,
+      // Not computed at all for a stale/offline device - same reasoning as deviceHealthDisplay
+      // already applies to the Health badge: a composite built from frozen last-known readings
+      // would look exactly as current as a genuinely live score, which is the one thing this
+      // number must never do.
+      healthScore: d.status === "active" && !offlineDeviceIds.has(d.id)
+        ? computeDeviceHealthScore({
+            device: d, events, batteryHealthPct, storageWearPct,
+            securityHealthPct: liveStatus?.detail?.securityHealthPct ?? null,
+          })
+        : { overall: null, dimensions: {} },
+    };
+  });
 
   const roster = withHealth.filter((d) => (showArchive ? d.status === "revoked" : d.status === "active"));
 
@@ -173,6 +191,7 @@ export default function Endpoints() {
     if (!sort.key) return rows;
     const sorted = [...rows].sort((a, b) => {
       if (sort.key === "health") return (HEALTH_RANK[a.health] - HEALTH_RANK[b.health]) * sort.dir;
+      if (sort.key === "score") return ((a.healthScore.overall ?? -1) - (b.healthScore.overall ?? -1)) * sort.dir;
       if (sort.key === "lastSeen") return ((a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : -Infinity) - (b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : -Infinity)) * sort.dir;
       if (sort.key === "device") return a.hostname.localeCompare(b.hostname) * sort.dir;
       return 0;
@@ -365,6 +384,7 @@ export default function Endpoints() {
                     <th style={{ textAlign: "right" }}>Disk</th>
                     <th style={{ textAlign: "right" }}>Battery health</th>
                     <SortHeader label="Health" sortKey="health" sort={sort} onSort={toggleSort} />
+                    <SortHeader label="Score" sortKey="score" sort={sort} onSort={toggleSort} style={{ textAlign: "right" }} />
                     <th>Connection</th>
                     <th>Signal</th>
                     <SortHeader label="Last Seen" sortKey="lastSeen" sort={sort} onSort={toggleSort} />
@@ -414,6 +434,9 @@ export default function Endpoints() {
                           {d.health === "unknown" ? "no data" : d.health === "stale" ? "not reporting" : d.health}
                         </span>
                       </td>
+                      <td className="mono" style={{ textAlign: "right", fontWeight: 700, color: `var(--${healthScoreTone(d.healthScore.overall)})` }} title="Composite Device Health Score - Hardware Integrity, Storage Wear, Battery, Security">
+                        {d.healthScore.overall ?? "—"}
+                      </td>
                       <td>
                         <span className={`badge ${d.connection === "online" ? "green" : "gray"}`}>{d.connection ?? "—"}</span>
                       </td>
@@ -442,7 +465,7 @@ export default function Endpoints() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={showArchive ? 4 : 11} className="empty-note">
+                  <td colSpan={showArchive ? 4 : 12} className="empty-note">
                     {showArchive
                       ? (query ? `No revoked enrollments match "${query}".` : "No revoked enrollments.")
                       : devices.filter((d) => d.status === "active").length === 0

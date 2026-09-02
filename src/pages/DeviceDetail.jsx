@@ -14,6 +14,7 @@ import { latestBatteryHealthPct, latestSsdWearPct, batteryHealthTone, ssdWearTon
 import { getLiveDetail, dash, onOff, liveBatteryHealthPct, liveSsdWearPct, formatEventLine } from "../lib/liveDetail.js";
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
 import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
+import { computeDeviceHealthScore, healthScoreTone, getThermalInfo, HEALTH_SCORE_WEIGHTS } from "../lib/deviceHealthScore.js";
 import TagEditor from "../components/TagEditor.jsx";
 import StatCard from "../components/StatCard.jsx";
 import ChainIntegrityCard from "../components/ChainIntegrityCard.jsx";
@@ -79,6 +80,16 @@ function timeAgo(iso) {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
+
+// Display order/labels for the four real dimensions computeDeviceHealthScore actually scores -
+// weights read straight from HEALTH_SCORE_WEIGHTS (deviceHealthScore.js) rather than repeated
+// here as separate numbers that could drift out of sync with the real formula.
+const HEALTH_SCORE_DIMENSIONS = [
+  { key: "hardwareIntegrity", label: "Hardware Integrity" },
+  { key: "storageWear", label: "Storage Wear" },
+  { key: "battery", label: "Battery" },
+  { key: "security", label: "Security" },
+];
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -252,6 +263,22 @@ export default function DeviceDetail() {
   const prediction = predictDeviceHealth(snapshots);
   const batteryHealthPct = liveBatteryHealthPct(liveStatus, latestBatteryHealthPct(snapshots));
   const ssdWearPct = liveSsdWearPct(liveStatus, latestSsdWearPct(snapshots));
+  // Composite Device Health Score - real math over the same real batteryHealthPct/ssdWearPct
+  // this page already displays elsewhere, plus device/events for the hardware-integrity
+  // dimension (see deviceHealthScore.js's own comment on why that one's event-derived). Not
+  // computed at all while offline - three of these four dimensions are last-known live readings,
+  // and a composite built from them would look exactly as current as a genuinely live score,
+  // the one thing this number must never do (same reasoning the Health badge above already
+  // applies via deviceHealthDisplay).
+  const healthScore = deviceIsOffline
+    ? { overall: null, dimensions: {} }
+    : computeDeviceHealthScore({
+        device, events, batteryHealthPct, storageWearPct: ssdWearPct, securityHealthPct: detail.securityHealthPct,
+      });
+  // Same offline gate as healthScore above - a frozen temperature reading from an offline
+  // device is exactly the same "looks current, isn't" problem, even with its own "(real, not
+  // yet scored)" label.
+  const thermal = deviceIsOffline ? { available: false, cpuTempC: null, gpuTempC: null } : getThermalInfo(liveStatus);
   const pendingApprovals = approvals.filter((a) => a.status === "pending");
   const identityLine = [detail.manufacturer, detail.model].filter(Boolean).join(" · ") || "Identity not reported yet";
   const liveDot = !!liveStatus && connected && !deviceIsOffline;
@@ -338,8 +365,61 @@ export default function DeviceDetail() {
                 <Kv label="TPM" value={onOff(detail.tpmActive)} />
                 <Kv label="Secure Boot" value={onOff(detail.secureBootEnabled)} />
                 <Kv label="BitLocker" value={onOff(detail.bitlockerOn)} />
+                {/* Real hourly Windows Update check (runWindowsUpdateCheck) - now reaching the
+                    backend, not yet folded into the composite score below (deliberate next
+                    step, see deviceHealthScore.js's own comment). checkedAt null means this
+                    device hasn't completed its first hourly check yet, distinct from a real 0. */}
+                <Kv
+                  label="Windows Updates"
+                  value={
+                    detail.windowsUpdateCheckedAt == null
+                      ? "—"
+                      : detail.windowsUpdatePendingCount === 0
+                        ? "Up to date"
+                        : `${detail.windowsUpdatePendingCount} pending`
+                  }
+                />
               </div>
-              <p className="section-sub" style={{ marginTop: 10 }}>Same three signals as the agent title-bar — missing sensors stay —</p>
+              <p className="section-sub" style={{ marginTop: 10 }}>TPM/Secure Boot/BitLocker are the same three signals as the agent title-bar — missing sensors stay —</p>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="section-head">
+              <div>
+                <h3 className="section-title">Device Health Score</h3>
+                <p className="section-sub">
+                  Real composite across 4 of the PRD's 6 dimensions{" "}
+                  <Info
+                    size={12} color="var(--text-faint)" style={{ cursor: "help", verticalAlign: -2 }}
+                    title="Hardware Integrity 40%, Storage Wear 26.7%, Battery 20%, Security 13.3% - real weights, renormalized per device over whichever of these are actually available for it. OS & Software Health and Thermal are real signals collected today but not yet folded into this weighting - shown separately below, not silently missing."
+                  />
+                </p>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1, color: `var(--${healthScoreTone(healthScore.overall)})` }}>
+                  {healthScore.overall ?? "—"}
+                </div>
+                <div className="section-sub" style={{ marginTop: 2 }}>out of 100</div>
+              </div>
+            </div>
+            <div className="grid grid-2" style={{ gap: 10, marginTop: 10 }}>
+              {HEALTH_SCORE_DIMENSIONS.map(({ key, label }) => {
+                const dim = healthScore.dimensions[key] ?? { score: null, available: false };
+                return (
+                  <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", background: "var(--bg-panel-2)", borderRadius: "var(--radius)" }}>
+                    <span style={{ fontSize: 12.5 }}>{label} <span className="section-sub">({HEALTH_SCORE_WEIGHTS[key]}%)</span></span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: dim.available ? `var(--${healthScoreTone(dim.score)})` : "var(--text-faint)" }}>
+                      {dim.available ? dim.score : "Not available"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border-soft)", fontSize: 12.5, color: "var(--text-faint)" }}>
+              Thermal (real, not yet scored): {thermal.available
+                ? [thermal.cpuTempC != null ? `CPU ${Math.round(thermal.cpuTempC)}°C` : null, thermal.gpuTempC != null ? `GPU ${Math.round(thermal.gpuTempC)}°C` : null].filter(Boolean).join(" · ")
+                : "not available on this device"}
             </div>
           </div>
 

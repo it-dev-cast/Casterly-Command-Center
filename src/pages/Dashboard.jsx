@@ -10,8 +10,9 @@ import { useLiveData, healthFromLiveStatus, getUsageColor, CPU_USAGE_THRESHOLDS,
 import { useRefetchOnEvent, isIncidentEvent } from "../hooks/useRefetchOnEvent.js";
 import { api, TENANT_ID } from "../lib/api.js";
 import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
-import { latestBatteryHealthPct, batteryHealthColor } from "../lib/batteryHealth.js";
-import { liveBatteryHealthPct, formatEventLine } from "../lib/liveDetail.js";
+import { computeDeviceHealthScore, healthScoreTone } from "../lib/deviceHealthScore.js";
+import { latestBatteryHealthPct, latestSsdWearPct, batteryHealthColor } from "../lib/batteryHealth.js";
+import { liveBatteryHealthPct, liveSsdWearPct, formatEventLine } from "../lib/liveDetail.js";
 import { OPEN_STATUSES } from "./Incidents.jsx";
 
 function timeAgo(iso) {
@@ -86,13 +87,13 @@ function issueLine(status, batteryHealthPct) {
   return null;
 }
 
-function MetricTile({ label, value, color, hint }) {
+function MetricTile({ label, value, color, hint, suffix = "%" }) {
   const pct = fmtPct(value);
   const bar = pct == null ? 0 : Math.max(0, Math.min(100, pct));
   return (
     <div className="sys-metric">
       <div className="sys-metric-lab">{label}</div>
-      <div className="sys-metric-val" style={{ color }}>{pct == null ? "—" : `${pct}%`}</div>
+      <div className="sys-metric-val" style={{ color }}>{pct == null ? "—" : `${pct}${suffix}`}</div>
       <div className="sys-metric-track">
         <div className="sys-metric-fill" style={{ width: `${bar}%`, background: color }} />
       </div>
@@ -102,6 +103,7 @@ function MetricTile({ label, value, color, hint }) {
 }
 
 function DeviceFocus({ d, recent, batteryHealthPct }) {
+  const scoreVal = d.healthScore?.overall;
   // Stale (offline, health already downgraded to "stale" by deviceHealthDisplay before this
   // component ever sees it) means the numbers below are a last-known reading, not a current one -
   // every color/hint on this card is neutralized to a plain faint gray rather than still coloring
@@ -137,6 +139,13 @@ function DeviceFocus({ d, recent, batteryHealthPct }) {
         <MetricTile label="Memory" value={ram} color={isStale ? faintColor : getUsageColor(ram, RAM_USAGE_THRESHOLDS)} hint={isStale ? "Stale" : usageHint(ram, RAM_USAGE_THRESHOLDS)} />
         <MetricTile label="Disk" value={disk} color={isStale ? faintColor : getUsageColor(disk, DISK_USAGE_THRESHOLDS)} hint={isStale ? "Stale" : usageHint(disk, DISK_USAGE_THRESHOLDS)} />
         <MetricTile label="Battery health" value={batteryHealthPct} color={healthColor} hint={isStale ? "Stale" : batteryHint(batteryHealthPct)} />
+        <MetricTile
+          label="Health score"
+          value={isStale ? null : scoreVal}
+          suffix=""
+          color={isStale ? faintColor : `var(--${healthScoreTone(scoreVal)})`}
+          hint={isStale ? "Stale" : scoreVal == null ? "No data" : "out of 100"}
+        />
       </div>
       <span className="sys-card-go">Open this device <ArrowRight size={14} /></span>
     </Link>
@@ -149,7 +158,9 @@ export default function Dashboard() {
 
   const [incidents, setIncidents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [batteryHealthById, setBatteryHealthById] = useState({});
+  // Both derived from the same one real per-device snapshot fetch below - not two separate
+  // fetches for two fields that already live on the same rows.
+  const [snapshotHealthById, setSnapshotHealthById] = useState({});
   const [remoteSessions, setRemoteSessions] = useState([]);
   function refreshIncidents() {
     if (!token) return;
@@ -173,12 +184,12 @@ export default function Dashboard() {
   useEffect(() => {
     if (!token) return;
     const active = devices.filter((d) => d.status === "active");
-    if (active.length === 0) { setBatteryHealthById({}); return; }
+    if (active.length === 0) { setSnapshotHealthById({}); return; }
     Promise.all(active.map((d) =>
       api.getDeviceMetricSnapshots(token, d.id)
-        .then((snaps) => [d.id, latestBatteryHealthPct(snaps)])
-        .catch(() => [d.id, null])
-    )).then((pairs) => setBatteryHealthById(Object.fromEntries(pairs)));
+        .then((snaps) => [d.id, { batteryHealthPct: latestBatteryHealthPct(snaps), ssdWearPct: latestSsdWearPct(snaps) }])
+        .catch(() => [d.id, { batteryHealthPct: null, ssdWearPct: null }])
+    )).then((pairs) => setSnapshotHealthById(Object.fromEntries(pairs)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, devices.length]);
   function relatedIncidentFor(event) {
@@ -191,11 +202,21 @@ export default function Dashboard() {
   const openIncidentsCount = incidents.filter((i) => OPEN_STATUSES.includes(i.status)).length;
 
   const activeDevices = devices.filter((d) => d.status === "active");
-  const withHealth = activeDevices.map((d) => ({
-    ...d,
-    status_: liveStatusByDevice[d.id],
-    health: deviceHealthDisplay(healthFromLiveStatus(liveStatusByDevice[d.id]), offlineDeviceIds.has(d.id)),
-  }));
+  const withHealth = activeDevices.map((d) => {
+    const status_ = liveStatusByDevice[d.id];
+    const batteryHealthPct = liveBatteryHealthPct(status_, snapshotHealthById[d.id]?.batteryHealthPct);
+    const storageWearPct = liveSsdWearPct(status_, snapshotHealthById[d.id]?.ssdWearPct);
+    return {
+      ...d,
+      status_,
+      health: deviceHealthDisplay(healthFromLiveStatus(status_), offlineDeviceIds.has(d.id)),
+      batteryHealthPct,
+      healthScore: computeDeviceHealthScore({
+        device: d, events, batteryHealthPct, storageWearPct,
+        securityHealthPct: status_?.detail?.securityHealthPct ?? null,
+      }),
+    };
+  });
 
   const healthy = withHealth.filter((d) => d.health === "healthy").length;
   const warning = withHealth.filter((d) => d.health === "warning").length;
@@ -238,7 +259,7 @@ export default function Dashboard() {
   const attentionWhy = worst
     ? worst.health === "stale"
       ? `Not reporting — last seen ${timeAgo(worst.lastSeenAt)}`
-      : issueLine(worst.status_, liveBatteryHealthPct(worst.status_, batteryHealthById[worst.id]))
+      : issueLine(worst.status_, worst.batteryHealthPct)
     : null;
 
   return (
@@ -286,7 +307,7 @@ export default function Dashboard() {
             </div>
             <div className={`sys-card-grid${shownCards.length === 1 ? " one" : ""}`}>
               {shownCards.map((d) => (
-                <DeviceFocus key={d.id} d={d} recent={recentDeviceIds.has(d.id)} batteryHealthPct={liveBatteryHealthPct(d.status_, batteryHealthById[d.id])} />
+                <DeviceFocus key={d.id} d={d} recent={recentDeviceIds.has(d.id)} batteryHealthPct={d.batteryHealthPct} />
               ))}
             </div>
             {hiddenCards > 0 && (
