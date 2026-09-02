@@ -13,10 +13,19 @@ const STATUS_TONE = { Active: "green", Expiring: "amber", Grace: "amber", Expire
 const RISK_TONE = { Low: "green", Medium: "amber", High: "red" };
 
 // Compact real prediction cell - same four real statuses prediction.js ever returns
-// (ok/insufficient-data/already-past-threshold/stable), no confidence, no fabricated number.
+// (ok/insufficient-data/already-past-threshold/stable). "ok" rows now carry a real confidence
+// tier (see prediction.js's R2 gate); only flag the low-confidence exception here, not confirm
+// the high-confidence default, so a well-fit projection's badge stays unchanged.
 function PredictionCell({ p }) {
   if (!p) return <span style={{ color: "var(--text-faint)" }}>—</span>;
-  if (p.status === "ok") return <span className={`badge ${RISK_TONE[p.risk]}`}>{p.daysRemaining}d · {p.risk}</span>;
+  if (p.status === "ok") {
+    return (
+      <span className={`badge ${RISK_TONE[p.risk]}`}>
+        {p.daysRemaining}d · {p.risk}
+        {p.confidence === "low" && <span style={{ color: "var(--text-faint)" }}> · low confidence</span>}
+      </span>
+    );
+  }
   if (p.status === "insufficient-data") return <span style={{ color: "var(--text-faint)", fontSize: 12 }}>Insufficient data</span>;
   if (p.status === "already-past-threshold") return <span style={{ color: "var(--red)", fontSize: 12 }}>Past threshold</span>;
   if (p.status === "stable") return <span style={{ color: "var(--text-faint)", fontSize: 12 }}>Stable</span>;

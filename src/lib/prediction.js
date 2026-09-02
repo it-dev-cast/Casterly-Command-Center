@@ -14,6 +14,13 @@ const SSD_WEAR_THRESHOLD = 90;
 const RISK_LOW_DAYS = 180;
 const RISK_MEDIUM_DAYS = 60;
 
+// Mirrors ai-service/app.py's CONFIDENCE_MIN_POINTS/CONFIDENCE_R2_THRESHOLD exactly - same real
+// fit-quality gate, same reasoning: R2 can be spuriously high with very few points, so both a
+// minimum sample size AND a minimum R2 are required before a projection is labeled "high"
+// confidence rather than "low".
+const CONFIDENCE_MIN_POINTS = 5;
+const CONFIDENCE_R2_THRESHOLD = 0.7;
+
 function dayOffset(dateStr, firstDate) {
   const d = new Date(`${dateStr}T00:00:00Z`);
   return Math.round((d - firstDate) / 86400000);
@@ -56,7 +63,31 @@ function evaluateMetric(rows, key, threshold, direction) {
 
   const daysRemaining = Math.round(days);
   const risk = daysRemaining > RISK_LOW_DAYS ? "Low" : daysRemaining > RISK_MEDIUM_DAYS ? "Medium" : "High";
-  return { status: "ok", currentValue, daysRemaining, risk, daysOfHistory: valid.length };
+
+  // Real R2 over the same fit already computed above, mirroring ai-service/app.py exactly.
+  // intercept isn't produced by the slope formula above, so it's derived here the same
+  // standard-OLS way numpy.polyfit's second return value is defined.
+  const intercept = (sumY - slope * sumX) / n;
+  const meanY = sumY / n;
+  let ssRes = 0;
+  let ssTot = 0;
+  for (let i = 0; i < n; i++) {
+    const predicted = slope * xs[i] + intercept;
+    ssRes += (ys[i] - predicted) ** 2;
+    ssTot += (ys[i] - meanY) ** 2;
+  }
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
+  const confidence = r2 >= CONFIDENCE_R2_THRESHOLD && n >= CONFIDENCE_MIN_POINTS ? "high" : "low";
+
+  return {
+    status: "ok",
+    currentValue,
+    daysRemaining,
+    risk,
+    daysOfHistory: valid.length,
+    confidence,
+    r2: Math.round(r2 * 100) / 100,
+  };
 }
 
 export function predictDeviceHealth(snapshots) {

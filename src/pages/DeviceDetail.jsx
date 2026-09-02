@@ -585,8 +585,10 @@ export default function DeviceDetail() {
           </div>
 
           {/* AI / PREDICTION - reuses the exact same `prediction` object the Lifecycle tab computes
-              from predictDeviceHealth(snapshots) below; no second calculation, no confidence value,
-              no fabricated root cause - just a condensed view of the same real statuses. */}
+              from predictDeviceHealth(snapshots) below; no second calculation, no fabricated root
+              cause - just a condensed view of the same real statuses. "ok" rows now carry a real
+              confidence tier (see prediction.js's R2 gate); only the low-confidence exception is
+              flagged inline, so a well-fit projection reads unchanged. */}
           <div className="card">
             <div className="section-head">
               <h3 className="section-title">AI Prediction</h3>
@@ -599,7 +601,12 @@ export default function DeviceDetail() {
               ].map(({ label, p }) => (
                 <div key={label} style={{ fontSize: 13 }}>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
-                  {p.status === "ok" && <span className={`badge ${RISK_TONE[p.risk]}`}>{p.daysRemaining}d remaining — {p.risk} risk</span>}
+                  {p.status === "ok" && (
+                    <span className={`badge ${RISK_TONE[p.risk]}`}>
+                      {p.daysRemaining}d remaining — {p.risk} risk
+                      {p.confidence === "low" && <span style={{ color: "var(--text-faint)" }}> · low confidence</span>}
+                    </span>
+                  )}
                   {p.status === "insufficient-data" && <span style={{ color: "var(--text-faint)" }}>Insufficient data — {p.daysOfHistory} of {p.minRequired} days recorded</span>}
                   {p.status === "already-past-threshold" && <span style={{ color: "var(--red)" }}>Already past the real degradation threshold</span>}
                   {p.status === "stable" && <span style={{ color: "var(--text-faint)" }}>Trend is flat/improving — no degradation projected</span>}
@@ -880,6 +887,7 @@ export default function DeviceDetail() {
                       <div className="stat-value">{p.daysRemaining}d</div>
                       <div className="stat-label">estimated remaining before {unit.toLowerCase()} crosses threshold</div>
                       <span className={`badge ${RISK_TONE[p.risk]}`} style={{ marginTop: 8, display: "inline-block" }}>Risk: {p.risk}</span>
+                      <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 4 }}>Confidence: {p.confidence === "high" ? "High" : "Low"}</div>
                     </>
                   )}
                   {p.status === "insufficient-data" && <div className="empty-note">Insufficient data — {p.daysOfHistory} of {p.minRequired} required days recorded.</div>}

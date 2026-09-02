@@ -343,7 +343,7 @@ export default function ActionCenter() {
         </p>
         <div className="table-scroll">
           <table className="data-table">
-            <thead><tr><th>Device</th><th>Metric</th><th>Days Remaining</th><th>Risk</th></tr></thead>
+            <thead><tr><th>Device</th><th>Metric</th><th>Days Remaining</th><th>Risk</th><th>Confidence</th></tr></thead>
             <tbody>
               {!aiLoading && aiSignals.map((s, i) => (
                 <tr key={`${s.device.id}-${s.metric}-${i}`}>
@@ -351,10 +351,11 @@ export default function ActionCenter() {
                   <td>{s.metric === "Battery Health" ? <TrendingDown size={13} style={{ marginRight: 5, verticalAlign: "middle" }} /> : <TrendingUp size={13} style={{ marginRight: 5, verticalAlign: "middle" }} />}{s.metric}</td>
                   <td className="mono">{s.daysRemaining}d</td>
                   <td><span className="badge red">{s.risk}</span></td>
+                  <td><span className={`badge ${s.confidence === "high" ? "green" : "gray"}`}>{s.confidence === "high" ? "High" : "Low"}</span></td>
                 </tr>
               ))}
-              {aiLoading && <tr><td colSpan={4} className="empty-note">Computing real per-device predictions…</td></tr>}
-              {!aiLoading && aiSignals.length === 0 && <tr><td colSpan={4} className="empty-note">No devices currently show elevated hardware risk (or not enough snapshot history yet to project).</td></tr>}
+              {aiLoading && <tr><td colSpan={5} className="empty-note">Computing real per-device predictions…</td></tr>}
+              {!aiLoading && aiSignals.length === 0 && <tr><td colSpan={5} className="empty-note">No devices currently show elevated hardware risk (or not enough snapshot history yet to project).</td></tr>}
             </tbody>
           </table>
         </div>

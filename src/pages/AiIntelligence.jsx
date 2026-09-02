@@ -18,11 +18,20 @@ function timeAgo(iso) {
 }
 
 // Same real per-cell wording Lifecycle.jsx's own device table already established (Stage 6) -
-// kept consistent here rather than reinvented, per this stage's own consistency check. Only the
-// four real statuses prediction.js ever returns; no confidence, no fabricated number.
+// kept consistent here rather than reinvented, per this stage's own consistency check. "ok" rows
+// now carry a real confidence tier (see prediction.js's R2 gate); only flag the low-confidence
+// exception here, not confirm the high-confidence default, so a well-fit projection's badge
+// stays unchanged.
 function PredictionCell({ p }) {
   if (!p) return <span style={{ color: "var(--text-faint)" }}>—</span>;
-  if (p.status === "ok") return <span className={`badge ${RISK_TONE[p.risk]}`}>{p.daysRemaining}d · {p.risk}</span>;
+  if (p.status === "ok") {
+    return (
+      <span className={`badge ${RISK_TONE[p.risk]}`}>
+        {p.daysRemaining}d · {p.risk}
+        {p.confidence === "low" && <span style={{ color: "var(--text-faint)" }}> · low confidence</span>}
+      </span>
+    );
+  }
   if (p.status === "insufficient-data") return <span style={{ color: "var(--text-faint)", fontSize: 12 }}>Insufficient data ({p.daysOfHistory}/{p.minRequired}d)</span>;
   if (p.status === "already-past-threshold") return <span style={{ color: "var(--red)", fontSize: 12 }}>Past threshold</span>;
   if (p.status === "stable") return <span style={{ color: "var(--text-faint)", fontSize: 12 }}>Stable</span>;
