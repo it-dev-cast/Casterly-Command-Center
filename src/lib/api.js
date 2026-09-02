@@ -51,6 +51,9 @@ export const api = {
   revokeDevice: (token, deviceId) => request(`/v1/devices/${deviceId}/revoke`, { method: "POST", token }),
   resetFingerprint: (token, deviceId) => request(`/v1/devices/${deviceId}/reset-fingerprint`, { method: "POST", token }),
   setDeviceTags: (token, deviceId, tags) => request(`/v1/devices/${deviceId}/tags`, { method: "POST", token, body: { tags } }),
+  // PRD §9 Self-Healing v1 remote dispatch - real, but v1 allows only one pending command per
+  // device at a time (backend 409s if one's already pending, see device_commands.go).
+  enqueueCommand: (token, deviceId, action) => request(`/v1/devices/${deviceId}/commands`, { method: "POST", token, body: { action } }),
 
   // Real data that already existed device-scoped only, now exposed admin-wide (see backend's
   // live.go "Admin-facing views" section).

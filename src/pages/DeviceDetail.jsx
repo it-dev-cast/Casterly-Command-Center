@@ -92,6 +92,14 @@ const HEALTH_SCORE_DIMENSIONS = [
   { key: "security", label: "Security" },
 ];
 
+// PRD §9 Self-Healing v1 remote dispatch - matches backend/device_commands.go's
+// knownRemediationActions and telemetry-server.mjs's REMEDIATION_ACTIONS keys exactly.
+const REMEDIATION_ACTIONS = [
+  { id: "flush-dns", label: "Flush DNS Cache" },
+  { id: "clean-temp", label: "Clean Temp Files" },
+  { id: "restart-service", label: "Restart Print Spooler" },
+];
+
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "telemetry", label: "Live Telemetry" },
@@ -118,6 +126,13 @@ export default function DeviceDetail() {
   const [approvalsError, setApprovalsError] = useState(null);
   const [approvalsLoading, setApprovalsLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // PRD §9 Self-Healing v1 remote dispatch - remediationPending is the one action ID currently
+  // awaiting completion (v1's one-pending-command-at-a-time constraint, enforced server-side too
+  // - see device_commands.go), remediationSince is when it was enqueued (so the watcher below
+  // only reacts to a NEW matching event, not an old one already sitting in the live buffer).
+  const [remediationPending, setRemediationPending] = useState(null);
+  const [remediationSince, setRemediationSince] = useState(null);
+  const [remediationResult, setRemediationResult] = useState(null);
   const [busyRequestId, setBusyRequestId] = useState(null);
   const [tab, setTab] = useState("overview");
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
@@ -244,6 +259,52 @@ export default function DeviceDetail() {
       setBusy(false);
     }
   }
+
+  // PRD §9 Self-Healing v1 remote dispatch - enqueues on the backend; the device itself discovers
+  // and runs it on its own next heartbeat poll (handleHeartbeat's pendingCommand), not
+  // immediately. The 409 case (a command already pending for this device - v1's real, disclosed
+  // one-at-a-time limit) is a genuine, expected outcome, not an unexpected error.
+  async function handleRunRemediation(action) {
+    try {
+      await api.enqueueCommand(token, id, action);
+      setRemediationPending(action);
+      setRemediationSince(new Date());
+      setRemediationResult(null);
+      pushToast("success", "Command queued", "The device will pick this up on its next check-in.");
+    } catch (e) {
+      if (e.status === 409) {
+        pushToast("error", "Already pending", "This device already has a command awaiting pickup or execution.");
+      } else {
+        pushToast("error", "Failed to queue command", e.message);
+      }
+    }
+  }
+
+  // No new GET endpoint - completion already fires a real remediation-succeeded/failed/blocked
+  // event into the same live events stream this page already reads (useLiveData().events), so
+  // this just watches for the next one matching the action just queued, same pattern
+  // isDeviceCurrentlyTampered/useRefetchOnEvent elsewhere in this app already use.
+  useEffect(() => {
+    if (!remediationPending || !remediationSince) return;
+    const match = events.find(
+      (e) =>
+        e.deviceId === id &&
+        new Date(e.createdAt) >= remediationSince &&
+        (e.eventType === `remediation-succeeded-${remediationPending}` ||
+          e.eventType === `remediation-failed-${remediationPending}` ||
+          e.eventType === `remediation-blocked-${remediationPending}`),
+    );
+    if (!match) return;
+    const status = match.eventType.startsWith("remediation-succeeded")
+      ? "Succeeded"
+      : match.eventType.startsWith("remediation-blocked")
+        ? "Blocked"
+        : "Failed";
+    const tone = status === "Succeeded" ? "green" : status === "Blocked" ? "gray" : "red";
+    setRemediationResult({ action: remediationPending, status, tone, message: match.message });
+    setRemediationPending(null);
+    setRemediationSince(null);
+  }, [events, remediationPending, remediationSince, id]);
 
   if (!device) {
     return (
@@ -430,6 +491,31 @@ export default function DeviceDetail() {
                 ? [thermal.cpuTempC != null ? `CPU ${Math.round(thermal.cpuTempC)}°C` : null, thermal.gpuTempC != null ? `GPU ${Math.round(thermal.gpuTempC)}°C` : null].filter(Boolean).join(" · ")
                 : "not available on this device"}
             </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 20 }}>
+            <h3 className="section-title">Remediation</h3>
+            <p className="section-sub">
+              PRD §9 Self-Healing — real remote dispatch. The device runs this on its own next check-in, not instantly.
+            </p>
+            <div className="grid grid-3" style={{ gap: 10, marginTop: 10 }}>
+              {REMEDIATION_ACTIONS.map((a) => (
+                <button
+                  key={a.id}
+                  className="btn"
+                  disabled={remediationPending != null}
+                  onClick={() => handleRunRemediation(a.id)}
+                >
+                  {remediationPending === a.id ? "Pending…" : a.label}
+                </button>
+              ))}
+            </div>
+            {remediationResult && (
+              <div style={{ marginTop: 12, display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <span className={`badge ${remediationResult.tone}`}>{remediationResult.status}</span>
+                <span style={{ fontSize: 12.5, color: "var(--text-faint)" }}>{remediationResult.message}</span>
+              </div>
+            )}
           </div>
 
           <div className="card" style={{ marginBottom: 20 }}>
