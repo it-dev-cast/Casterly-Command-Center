@@ -6,6 +6,7 @@ import { useLiveData, healthFromLiveStatus, getUsageTextColor, CPU_USAGE_THRESHO
 import { useDialog } from "../context/DialogContext.jsx";
 import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import { computeDeviceHealthScore, healthScoreTone } from "../lib/deviceHealthScore.js";
+import { computeWarrantyState, warrantyStateTone } from "../lib/warrantyState.js";
 import { api } from "../lib/api.js";
 import { latestBatteryHealthPct, latestSsdWearPct, batteryHealthColor } from "../lib/batteryHealth.js";
 import { getLiveDetail, liveBatteryHealthPct, liveSsdWearPct } from "../lib/liveDetail.js";
@@ -59,11 +60,11 @@ function SortHeader({ label, sortKey, sort, onSort, style }) {
 }
 
 function exportToCsv(rows) {
-  const headers = ["Device ID", "Hostname", "Tags", "CPU %", "RAM %", "Disk %", "Battery Health %", "Health", "Health Score", "Connection", "Status", "Enrolled", "Last Seen"];
+  const headers = ["Device ID", "Hostname", "Tags", "CPU %", "RAM %", "Disk %", "Battery Health %", "Health", "Health Score", "Warranty", "Connection", "Status", "Enrolled", "Last Seen"];
   const lines = rows.map((d) => [
     d.id, d.hostname, (d.tags || []).join(";"),
     d.liveStatus?.cpuPct ?? "", d.liveStatus?.ramPct ?? "", d.liveStatus?.diskPct ?? "", d.batteryHealthPct ?? "",
-    d.health, d.healthScore?.overall ?? "", d.connection ?? "", d.status, d.enrolledAt || "", d.lastSeenAt || "",
+    d.health, d.healthScore?.overall ?? "", d.warrantyState ?? "", d.connection ?? "", d.status, d.enrolledAt || "", d.lastSeenAt || "",
   ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","));
   const csv = [headers.join(","), ...lines].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -78,7 +79,7 @@ function exportToCsv(rows) {
 }
 
 export default function Endpoints() {
-  const { devices, liveStatusByDevice, events, recentDeviceIds, revokeDevice, resetFingerprint, pushToast, token, offlineDeviceIds } = useLiveData();
+  const { devices, liveStatusByDevice, events, recentDeviceIds, revokeDevice, resetFingerprint, pushToast, token, offlineDeviceIds, entitlement } = useLiveData();
   const { confirmAsync } = useDialog();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -174,6 +175,10 @@ export default function Endpoints() {
             securityHealthPct: liveStatus?.detail?.securityHealthPct ?? null,
           })
         : { overall: null, dimensions: {} },
+      // Unlike healthScore above, not gated on online/offline - this is a derived fact from
+      // baseline-lock + past events + entitlement standing, not a live sensor reading that would
+      // misleadingly look current while frozen.
+      warrantyState: computeWarrantyState({ device: d, events, entitlementStatus: entitlement?.status }),
     };
   });
 
@@ -385,6 +390,7 @@ export default function Endpoints() {
                     <th style={{ textAlign: "right" }}>Battery health</th>
                     <SortHeader label="Health" sortKey="health" sort={sort} onSort={toggleSort} />
                     <SortHeader label="Score" sortKey="score" sort={sort} onSort={toggleSort} style={{ textAlign: "right" }} />
+                    <th>Warranty</th>
                     <th>Connection</th>
                     <th>Signal</th>
                     <SortHeader label="Last Seen" sortKey="lastSeen" sort={sort} onSort={toggleSort} />
@@ -436,6 +442,11 @@ export default function Endpoints() {
                       </td>
                       <td className="mono" style={{ textAlign: "right", fontWeight: 700, color: `var(--${healthScoreTone(d.healthScore.overall)})` }} title="Composite Device Health Score - Hardware Integrity, Storage Wear, Battery, Security">
                         {d.healthScore.overall ?? "—"}
+                      </td>
+                      <td>
+                        <span className={`badge ${warrantyStateTone(d.warrantyState)}`} title="PRD §6.4 Warranty State - baseline integrity + subscription standing">
+                          {d.warrantyState ?? "—"}
+                        </span>
                       </td>
                       <td>
                         <span className={`badge ${d.connection === "online" ? "green" : "gray"}`}>{d.connection ?? "—"}</span>

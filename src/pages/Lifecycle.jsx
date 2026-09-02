@@ -24,9 +24,7 @@ function PredictionCell({ p }) {
 }
 
 export default function Lifecycle() {
-  const { token, devices, events, pushToast } = useLiveData();
-  const [entitlement, setEntitlement] = useState(null);
-  const [entitlementError, setEntitlementError] = useState(null);
+  const { token, devices, events, pushToast, entitlement } = useLiveData();
   const [approvals, setApprovals] = useState([]);
   const [approvalsError, setApprovalsError] = useState(null);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
@@ -45,7 +43,6 @@ export default function Lifecycle() {
 
   useEffect(() => {
     if (!token) return;
-    api.getEntitlement(token).then(setEntitlement).catch((e) => setEntitlementError(e.message));
     refreshApprovals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
@@ -155,7 +152,7 @@ export default function Lifecycle() {
             <p className="section-sub">Real feature entitlement for plan: {entitlement?.plan || "—"}</p>
           </div>
         </div>
-        {entitlementError && <div className="empty-note" style={{ color: "var(--red)" }}>Couldn't load entitlement: {entitlementError}</div>}
+        {!entitlement && <div className="empty-note">Entitlement not yet synced.</div>}
         {entitlement && (
           <div className="grid grid-4">
             {entitlement.features.map((f) => (

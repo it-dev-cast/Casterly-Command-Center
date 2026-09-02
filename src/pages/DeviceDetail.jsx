@@ -15,6 +15,7 @@ import { getLiveDetail, dash, onOff, liveBatteryHealthPct, liveSsdWearPct, forma
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
 import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import { computeDeviceHealthScore, healthScoreTone, getThermalInfo, HEALTH_SCORE_WEIGHTS } from "../lib/deviceHealthScore.js";
+import { computeWarrantyState, warrantyStateTone } from "../lib/warrantyState.js";
 import TagEditor from "../components/TagEditor.jsx";
 import StatCard from "../components/StatCard.jsx";
 import ChainIntegrityCard from "../components/ChainIntegrityCard.jsx";
@@ -105,7 +106,7 @@ const TABS = [
 
 export default function DeviceDetail() {
   const { id } = useParams();
-  const { token, devices, liveStatusByDevice, events, connected, revokeDevice, resetFingerprint, pushToast, offlineDeviceIds } = useLiveData();
+  const { token, devices, liveStatusByDevice, events, connected, revokeDevice, resetFingerprint, pushToast, offlineDeviceIds, entitlement } = useLiveData();
   const { confirmAsync } = useDialog();
   const [snapshots, setSnapshots] = useState([]);
   const [snapshotsError, setSnapshotsError] = useState(null);
@@ -279,6 +280,10 @@ export default function DeviceDetail() {
   // device is exactly the same "looks current, isn't" problem, even with its own "(real, not
   // yet scored)" label.
   const thermal = deviceIsOffline ? { available: false, cpuTempC: null, gpuTempC: null } : getThermalInfo(liveStatus);
+  // Unlike healthScore above, not gated on deviceIsOffline - PRD §6.4 Warranty state is a derived
+  // fact from baseline-lock + past events + entitlement standing, not a live sensor reading that
+  // would misleadingly look current while frozen (see lib/warrantyState.js's own comment).
+  const warrantyState = computeWarrantyState({ device, events, entitlementStatus: entitlement?.status });
   const pendingApprovals = approvals.filter((a) => a.status === "pending");
   const identityLine = [detail.manufacturer, detail.model].filter(Boolean).join(" · ") || "Identity not reported yet";
   const liveDot = !!liveStatus && connected && !deviceIsOffline;
@@ -356,6 +361,10 @@ export default function DeviceDetail() {
                 <Kv label="OS" value={dash(detail.osCaption)} />
                 <Kv label="Enrolled" value={fmtTime(device.enrolledAt)} />
                 <Kv label="Hardware Baseline" value={device.fingerprintLockedAt ? "Locked" : "Pending"} />
+                <Kv
+                  label="Warranty"
+                  value={<span className={`badge ${warrantyStateTone(warrantyState)}`} title="PRD §6.4 Warranty State - baseline integrity + subscription standing">{warrantyState ?? "—"}</span>}
+                />
               </div>
             </div>
             <div className="card">

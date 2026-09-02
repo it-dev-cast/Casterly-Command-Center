@@ -113,6 +113,7 @@ export function LiveDataProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const [recentDeviceIds, setRecentDeviceIds] = useState(new Set());
   const [offlineThresholdMinutes, setOfflineThresholdMinutes] = useState(null);
+  const [entitlement, setEntitlement] = useState(null);
   const [livenessNow, setLivenessNow] = useState(() => Date.now());
   const toastIdRef = useRef(0);
   const hostnameByDeviceRef = useRef({});
@@ -125,6 +126,18 @@ export function LiveDataProvider({ children }) {
   useEffect(() => {
     if (!token) return;
     api.getOfflineThreshold(token).then((r) => setOfflineThresholdMinutes(r.minutes)).catch(() => {});
+  }, [token]);
+
+  // Real, tenant-wide entitlement (backend's real entitlements table via getEntitlementByTenant/
+  // deriveEntitlementStatus) - lifted here from being fetched separately per-page (it used to be
+  // just Lifecycle.jsx's own local state) now that Endpoints/Device 360/Hardware Integrity all
+  // need the same real subscription-standing fact to derive Warranty state (see
+  // lib/warrantyState.js). Fetched once per session like offlineThresholdMinutes above, not
+  // polled - it changes rarely and has no live push; null on failure, same "unknown, not
+  // fabricated" treatment as everything else here.
+  useEffect(() => {
+    if (!token) return;
+    api.getEntitlement(token).then(setEntitlement).catch(() => {});
   }, [token]);
 
   // See LIVENESS_TICK_MS's own comment above - staleness must be re-evaluated on a clock, not
@@ -335,6 +348,7 @@ export function LiveDataProvider({ children }) {
     revokeDevice, resetFingerprint, setDeviceTags,
     notifications, markAllNotificationsRead, clearAllNotifications,
     offlineDeviceIds, offlineDevices,
+    entitlement,
   };
 
   return <LiveDataContext.Provider value={value}>{children}</LiveDataContext.Provider>;

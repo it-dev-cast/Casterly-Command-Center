@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ShieldCheck, ShieldAlert, Users, RotateCcw, ExternalLink, Info } from "lucide-react";
+import { ShieldCheck, ShieldAlert, ShieldX, Users, RotateCcw, ExternalLink, Info } from "lucide-react";
 import StatCard from "../components/StatCard.jsx";
 import EventDetailPanel from "../components/EventDetailPanel.jsx";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import { useRefetchOnEvent, isIncidentEvent } from "../hooks/useRefetchOnEvent.js";
 import { api } from "../lib/api.js";
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
+import { computeWarrantyState } from "../lib/warrantyState.js";
 
 function timeAgo(iso) {
   if (!iso) return "never";
@@ -23,7 +24,7 @@ function timeAgo(iso) {
 // useLiveData().events, same buffer Activity Log reads) already carries every device's events, so
 // no new backend endpoint is needed here.
 export default function HardwareIntegrity() {
-  const { devices, events, token } = useLiveData();
+  const { devices, events, token, entitlement } = useLiveData();
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [incidents, setIncidents] = useState([]);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -67,6 +68,12 @@ export default function HardwareIntegrity() {
   const devicesWithHardwareEvents = devices.filter((d) =>
     events.some((e) => e.deviceId === d.id && (e.eventType === "hardware-tamper-detected" || e.eventType === "hardware-fingerprint-reset"))
   );
+  // Real, honest v1 of PRD §6.4 (lib/warrantyState.js) - this page's own tamper/identity signal
+  // is exactly what drives a device into Warranty "Warning", so it's the natural place to
+  // surface how many devices that's currently true for, fleet-wide.
+  const warrantyWarningCount = devices.filter(
+    (d) => computeWarrantyState({ device: d, events, entitlementStatus: entitlement?.status }) === "Warning"
+  ).length;
 
   // One real row per parsed field change, across every device's real event - the same shape
   // Device 360's Hardware tab table already uses, just not scoped to one device.
@@ -82,11 +89,12 @@ export default function HardwareIntegrity() {
         <Info size={12} color="var(--text-faint)" style={{ cursor: "help", verticalAlign: -2 }} title="The same events Device 360's Hardware tab shows per device, aggregated here. Current event window, up to 200 most recent events, same as Activity / Audit." />
       </p>
 
-      <div className="grid grid-4" style={{ marginBottom: 20 }}>
+      <div className="grid grid-5" style={{ marginBottom: 20 }}>
         <StatCard icon={ShieldCheck} tone="green" value={lockedCount} label="Devices with Baseline Locked" meta={`of ${devices.length} registered`} live />
         <StatCard icon={ShieldAlert} tone={changeEvents.length > 0 ? "amber" : "green"} value={rows.length} label="Changes Detected" meta="field-level, in current window" live />
         <StatCard icon={Users} tone={affectedDeviceCount > 0 ? "amber" : "green"} value={affectedDeviceCount} label="Devices Affected" live />
         <StatCard icon={RotateCcw} tone="blue" value={resetEvents.length} label="Baseline Resets" live />
+        <StatCard icon={ShieldX} tone={warrantyWarningCount > 0 ? "amber" : "green"} value={warrantyWarningCount} label="Warranty Warning" meta="PRD §6.4 state" live />
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
