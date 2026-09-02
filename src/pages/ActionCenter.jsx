@@ -4,6 +4,7 @@ import { AlertTriangle, ClipboardCheck, ShieldAlert, Bell, ArrowRight, Siren, Sp
 import StatCard from "../components/StatCard.jsx";
 import EventDetailPanel from "../components/EventDetailPanel.jsx";
 import { useLiveData, healthFromLiveStatus } from "../context/LiveDataContext.jsx";
+import { useRefetchOnEvent, isIncidentEvent, isApprovalEvent } from "../hooks/useRefetchOnEvent.js";
 import { api } from "../lib/api.js";
 import { predictDeviceHealth } from "../lib/prediction.js";
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
@@ -42,19 +43,32 @@ export default function ActionCenter() {
   const [aiLoading, setAiLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState(null);
 
-  useEffect(() => {
+  function refreshIncidents() {
     if (!token) return;
     setIncidentsLoading(true);
     api.listIncidents(token).then((list) => setIncidents(list.filter((i) => OPEN_STATUSES.includes(i.status))))
       .catch((e) => setIncidentsError(e.message)).finally(() => setIncidentsLoading(false));
+  }
+  useEffect(refreshIncidents, [token]);
+  // Neither incidents nor approval requests have a dedicated SSE push (see useRefetchOnEvent's
+  // own comment) - this is the real bridge that keeps both from going stale for an entire session
+  // just because they were only ever fetched once on mount.
+  useRefetchOnEvent(events, isIncidentEvent, refreshIncidents);
+  useRefetchOnEvent(events, isApprovalEvent, refreshApprovals);
+
+  useEffect(() => {
+    if (!token) return;
     refreshApprovals();
 
     // Real fleet-wide AI signal: predictDeviceHealth (Stage A's exact port of ai-service's real
     // battery/SSD regression) run once per active device, over the same real metric-snapshots
     // Device 360/Lifecycle already fetch per-device - not a fabricated fleet score, just the real
-    // per-device math run across every currently-loaded active device. One batch fetch on mount,
-    // not polled - scales linearly with active device count, which is fine at this fleet's real
-    // size but worth reconsidering if the fleet grows very large.
+    // per-device math run across every currently-loaded active device. Re-runs whenever the
+    // active device count changes (same convention Dashboard/Endpoints/Lifecycle already use for
+    // this same per-device-fetch pattern), not only on token change - a newly-enrolled device
+    // previously never got an AI signal computed until the next login. Scales linearly with
+    // active device count, which is fine at this fleet's real size but worth reconsidering if the
+    // fleet grows very large.
     const activeDevices = devices.filter((d) => d.status === "active");
     if (activeDevices.length === 0) { setAiLoading(false); return; }
     setAiLoading(true);
@@ -75,7 +89,7 @@ export default function ActionCenter() {
       setAiSignals(signals);
     }).finally(() => setAiLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, devices.length]);
 
   async function refreshApprovals() {
     setApprovalsLoading(true);

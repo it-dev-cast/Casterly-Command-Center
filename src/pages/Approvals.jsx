@@ -4,6 +4,7 @@ import { ClipboardCheck, Clock, CheckCircle2, XCircle } from "lucide-react";
 import StatCard from "../components/StatCard.jsx";
 import ApprovalsTable from "../components/ApprovalsTable.jsx";
 import { useLiveData } from "../context/LiveDataContext.jsx";
+import { useRefetchOnEvent, isApprovalEvent } from "../hooks/useRefetchOnEvent.js";
 import { api } from "../lib/api.js";
 
 // The full real ADE approval-request history, tenant-wide - api.listApprovalRequests already
@@ -12,7 +13,7 @@ import { api } from "../lib/api.js";
 // Lifecycle.jsx alongside unrelated entitlement content. This is that same real data as its own
 // dedicated page, with real filters.
 export default function Approvals() {
-  const { token, devices, pushToast } = useLiveData();
+  const { token, devices, events, pushToast } = useLiveData();
   const [approvals, setApprovals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -35,6 +36,10 @@ export default function Approvals() {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+  // Approval requests have no dedicated SSE push (see useRefetchOnEvent's own comment) - this is
+  // the real bridge that keeps this history from going stale for an entire session just because
+  // it was only ever fetched once on mount.
+  useRefetchOnEvent(events, isApprovalEvent, refresh);
 
   function updateStatusFilter(next) {
     setStatusFilter(next);

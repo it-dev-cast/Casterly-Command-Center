@@ -7,6 +7,7 @@ import ApprovalsTable from "../components/ApprovalsTable.jsx";
 import { api } from "../lib/api.js";
 import { predictDeviceHealth } from "../lib/prediction.js";
 import { useLiveData } from "../context/LiveDataContext.jsx";
+import { useRefetchOnEvent, isApprovalEvent } from "../hooks/useRefetchOnEvent.js";
 
 const STATUS_TONE = { Active: "green", Expiring: "amber", Grace: "amber", Expired: "red", Suspended: "red" };
 const RISK_TONE = { Low: "green", Medium: "amber", High: "red" };
@@ -23,7 +24,7 @@ function PredictionCell({ p }) {
 }
 
 export default function Lifecycle() {
-  const { token, devices, pushToast } = useLiveData();
+  const { token, devices, events, pushToast } = useLiveData();
   const [entitlement, setEntitlement] = useState(null);
   const [entitlementError, setEntitlementError] = useState(null);
   const [approvals, setApprovals] = useState([]);
@@ -45,9 +46,13 @@ export default function Lifecycle() {
   useEffect(() => {
     if (!token) return;
     api.getEntitlement(token).then(setEntitlement).catch((e) => setEntitlementError(e.message));
-    setApprovalsError(null);
-    api.listApprovalRequests(token).then(setApprovals).catch((e) => setApprovalsError(e.message));
+    refreshApprovals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+  // Approval requests have no dedicated SSE push (see useRefetchOnEvent's own comment) - this is
+  // the real bridge that keeps the ADE queue from going stale for an entire session just because
+  // it was only ever fetched once on mount.
+  useRefetchOnEvent(events, isApprovalEvent, refreshApprovals);
 
   useEffect(() => {
     if (!token || !selectedDeviceId) return;

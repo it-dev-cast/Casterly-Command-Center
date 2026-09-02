@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft, ExternalLink, Cpu, MemoryStick, HardDrive, BatteryMedium, ShieldAlert, Lock } from "lucide-react";
 import { useLiveData, healthFromLiveStatus, CPU_USAGE_THRESHOLDS, RAM_USAGE_THRESHOLDS, DISK_USAGE_THRESHOLDS } from "../context/LiveDataContext.jsx";
+import { useRefetchOnEvent } from "../hooks/useRefetchOnEvent.js";
 import { api } from "../lib/api.js";
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
 import { computeOfflineDeviceIds } from "../lib/deviceLiveness.js";
@@ -64,6 +65,16 @@ export default function IncidentDetail() {
     if (token) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, id]);
+  // Incident status/notes changes made by another admin/session have no dedicated SSE push (only
+  // a generic "incident-status-changed" event on this incident's own device, same real signal
+  // every other page's events array already carries) - this is the real bridge that keeps this
+  // detail view from going stale for an entire session just because it was only ever fetched once
+  // on mount/id change.
+  useRefetchOnEvent(
+    events,
+    (e) => e.eventType === "incident-status-changed" && incident && e.deviceId === incident.deviceId,
+    load,
+  );
 
   async function handleStatusChange(status) {
     setBusy(true);

@@ -4,6 +4,7 @@ import { ShieldCheck, ShieldAlert, Users, RotateCcw, ExternalLink, Info } from "
 import StatCard from "../components/StatCard.jsx";
 import EventDetailPanel from "../components/EventDetailPanel.jsx";
 import { useLiveData } from "../context/LiveDataContext.jsx";
+import { useRefetchOnEvent, isIncidentEvent } from "../hooks/useRefetchOnEvent.js";
 import { api } from "../lib/api.js";
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
 
@@ -32,10 +33,15 @@ export default function HardwareIntegrity() {
   // already use, just looked up in the other direction (event -> incident instead of incident ->
   // event). One extra real fetch, explicitly requested by this stage's own "Hardware Integrity +
   // Incidents" section - not a decorative addition.
-  useEffect(() => {
+  function refreshIncidents() {
     if (!token) return;
     api.listIncidents(token).then(setIncidents).catch(() => {});
-  }, [token]);
+  }
+  useEffect(refreshIncidents, [token]);
+  // Incidents have no dedicated SSE push (see useRefetchOnEvent's own comment) - this is the real
+  // bridge that keeps the "Related Incident" column from going stale for an entire session just
+  // because it was only ever fetched once on mount.
+  useRefetchOnEvent(events, isIncidentEvent, refreshIncidents);
   function incidentForEvent(eventId) {
     return incidents.find((i) => i.sourceEventId === eventId) || null;
   }

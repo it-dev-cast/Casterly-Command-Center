@@ -7,6 +7,7 @@ import {
 import EventDetailPanel from "../components/EventDetailPanel.jsx";
 import GlanceCell from "../components/GlanceCell.jsx";
 import { useLiveData, healthFromLiveStatus, getUsageColor, CPU_USAGE_THRESHOLDS, RAM_USAGE_THRESHOLDS, DISK_USAGE_THRESHOLDS } from "../context/LiveDataContext.jsx";
+import { useRefetchOnEvent, isIncidentEvent } from "../hooks/useRefetchOnEvent.js";
 import { api, TENANT_ID } from "../lib/api.js";
 import { getOfflineDevices } from "../lib/deviceLiveness.js";
 import { latestBatteryHealthPct, batteryHealthColor } from "../lib/batteryHealth.js";
@@ -144,10 +145,15 @@ export default function Dashboard() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [batteryHealthById, setBatteryHealthById] = useState({});
   const [remoteSessions, setRemoteSessions] = useState([]);
-  useEffect(() => {
+  function refreshIncidents() {
     if (!token) return;
     api.listIncidents(token).then(setIncidents).catch(() => {});
-  }, [token]);
+  }
+  useEffect(refreshIncidents, [token]);
+  // Incidents have no dedicated SSE push (see useRefetchOnEvent's own comment) - this is the real
+  // bridge that keeps the headline/jump-strip incident counts from going stale for an entire
+  // session just because they were only ever fetched once on mount.
+  useRefetchOnEvent(events, isIncidentEvent, refreshIncidents);
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
@@ -157,10 +163,6 @@ export default function Dashboard() {
     tick();
     const id = setInterval(tick, 4000);
     return () => { cancelled = true; clearInterval(id); };
-  }, [token]);
-  useEffect(() => {
-    if (!token) return;
-    api.listIncidents(token).then(setIncidents).catch(() => {});
   }, [token]);
   useEffect(() => {
     if (!token) return;

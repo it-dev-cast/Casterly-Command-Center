@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useLiveData, healthFromLiveStatus, CPU_USAGE_THRESHOLDS, RAM_USAGE_THRESHOLDS, DISK_USAGE_THRESHOLDS } from "../context/LiveDataContext.jsx";
+import { useRefetchOnEvent, isIncidentEvent, isApprovalEvent } from "../hooks/useRefetchOnEvent.js";
 import { useDialog } from "../context/DialogContext.jsx";
 import { api } from "../lib/api.js";
 import { predictDeviceHealth } from "../lib/prediction.js";
@@ -142,17 +143,28 @@ export default function DeviceDetail() {
     return incidents.find((i) => i.sourceEventId === event.id) || null;
   }
 
+  function refreshIncidents() {
+    if (!token || !id) return;
+    setIncidentsError(null);
+    setIncidentsLoading(true);
+    api.listIncidents(token).then((list) => setIncidents(list.filter((i) => i.deviceId === id))).catch((e) => setIncidentsError(e.message)).finally(() => setIncidentsLoading(false));
+  }
+
   useEffect(() => {
     if (!token || !id) return;
     setSnapshotsError(null);
     setSnapshotsLoading(true);
     api.getDeviceMetricSnapshots(token, id).then(setSnapshots).catch((e) => { setSnapshots([]); setSnapshotsError(e.message); }).finally(() => setSnapshotsLoading(false));
-    setIncidentsError(null);
-    setIncidentsLoading(true);
-    api.listIncidents(token).then((list) => setIncidents(list.filter((i) => i.deviceId === id))).catch((e) => setIncidentsError(e.message)).finally(() => setIncidentsLoading(false));
+    refreshIncidents();
     refreshApprovals();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, id]);
+  // Neither incidents nor approval requests have a dedicated SSE push (see useRefetchOnEvent's
+  // own comment) - this is the real bridge that keeps this device's Incidents/Approvals tabs from
+  // going stale for an entire session just because they were only ever fetched once on mount/id
+  // change. Scoped to this device's own id, same as the REST fetches above already are.
+  useRefetchOnEvent(events, (e) => isIncidentEvent(e) && e.deviceId === id, refreshIncidents);
+  useRefetchOnEvent(events, (e) => isApprovalEvent(e) && e.deviceId === id, refreshApprovals);
 
   async function refreshApprovals() {
     setApprovalsError(null);

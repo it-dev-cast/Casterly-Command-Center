@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ClipboardCheck, Clock, ShieldCheck, ShieldAlert, CheckCircle2, Archive, Info } from "lucide-react";
 import StatCard from "../components/StatCard.jsx";
 import { useLiveData } from "../context/LiveDataContext.jsx";
+import { useRefetchOnEvent, isIncidentEvent } from "../hooks/useRefetchOnEvent.js";
 import { api } from "../lib/api.js";
 
 function timeAgo(iso) {
@@ -28,7 +29,7 @@ export const STATUS_TONE = {
 export const OPEN_STATUSES = ["open", "acknowledged", "investigating", "customer_contacted", "service_scheduled", "in_repair"];
 
 export default function Incidents() {
-  const { token, devices } = useLiveData();
+  const { token, devices, events } = useLiveData();
   const [incidents, setIncidents] = useState([]);
   const [searchParams, setSearchParams] = useSearchParams();
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
@@ -56,12 +57,17 @@ export default function Incidents() {
     setSearchParams(params, { replace: true });
   }
 
-  useEffect(() => {
+  function refreshIncidents() {
     if (!token) return;
     setLoading(true);
     setLoadError(null);
     api.listIncidents(token).then(setIncidents).catch((e) => setLoadError(e.message)).finally(() => setLoading(false));
-  }, [token]);
+  }
+  useEffect(refreshIncidents, [token]);
+  // Incidents have no dedicated SSE push (see useRefetchOnEvent's own comment) - this is the real
+  // bridge that keeps the queue from going stale for an entire session just because it was only
+  // ever fetched once on mount.
+  useRefetchOnEvent(events, isIncidentEvent, refreshIncidents);
 
   const filtered = incidents
     .filter((inc) => {
