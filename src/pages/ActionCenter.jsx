@@ -8,7 +8,7 @@ import { useRefetchOnEvent, isIncidentEvent, isApprovalEvent } from "../hooks/us
 import { api } from "../lib/api.js";
 import { predictDeviceHealth } from "../lib/prediction.js";
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
-import { getOfflineDevices } from "../lib/deviceLiveness.js";
+import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import { STATUS_LABELS, STATUS_TONE, OPEN_STATUSES } from "./Incidents.jsx";
 
 // Small reusable category eyebrow, matching the same uppercase-label convention Sidebar.jsx's
@@ -31,7 +31,7 @@ function timeAgo(iso) {
 // aggregation lens over that same data, not a second parallel data source. No item here has a
 // value that isn't traceable to one of api.js's existing real calls.
 export default function ActionCenter() {
-  const { token, devices, liveStatusByDevice, events, notifications, pushToast } = useLiveData();
+  const { token, devices, liveStatusByDevice, events, notifications, pushToast, offlineDeviceIds, offlineDevices } = useLiveData();
   const [incidents, setIncidents] = useState([]);
   const [incidentsError, setIncidentsError] = useState(null);
   const [incidentsLoading, setIncidentsLoading] = useState(true);
@@ -125,14 +125,13 @@ export default function ActionCenter() {
     }
   }
 
-  const withHealth = devices.map((d) => ({ ...d, health: healthFromLiveStatus(liveStatusByDevice[d.id]) }));
+  const withHealth = devices.map((d) => ({ ...d, health: deviceHealthDisplay(healthFromLiveStatus(liveStatusByDevice[d.id]), offlineDeviceIds.has(d.id)) }));
   const attentionDevices = withHealth.filter((d) => d.status === "active" && (d.health === "warning" || d.health === "critical"))
     .sort((a, b) => (a.health === "critical" ? -1 : 1) - (b.health === "critical" ? -1 : 1));
   const pendingApprovals = approvals.filter((a) => a.status === "pending");
   const unreadNotifications = notifications.filter((n) => !n.read);
   const criticalIncidents = incidents.filter((i) => i.severity === "critical");
   const criticalDevices = attentionDevices.filter((d) => d.health === "critical");
-  const offlineDevices = getOfflineDevices(devices, events, liveStatusByDevice);
   // Real fleet-wide hardware-change rows, reusing the same shared parser HardwareIntegrity.jsx and
   // Device 360's own Hardware tab already use - not a second implementation.
   const hardwareChangeRows = events
@@ -317,7 +316,7 @@ export default function ActionCenter() {
         <h3 className="section-title">Devices Currently Offline</h3>
         <p className="section-sub">
           Liveness, not health{" "}
-          <Info size={12} color="var(--text-faint)" style={{ cursor: "help", verticalAlign: -2 }} title="Latest device-offline event, unless live telemetry arrived after it. Health can still look healthy because last readings never expire." />
+          <Info size={12} color="var(--text-faint)" style={{ cursor: "help", verticalAlign: -2 }} title="Real-time: the later of lastSeenAt and live-status recency compared against the tenant's offline threshold, re-checked continuously - not dependent on the offline event still being in the recent event window. A stale device's health shows as 'stale,' not its last reading." />
         </p>
         <div className="table-scroll">
           <table className="data-table">

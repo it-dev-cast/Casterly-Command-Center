@@ -9,7 +9,7 @@ import GlanceCell from "../components/GlanceCell.jsx";
 import { useLiveData, healthFromLiveStatus, getUsageColor, CPU_USAGE_THRESHOLDS, RAM_USAGE_THRESHOLDS, DISK_USAGE_THRESHOLDS } from "../context/LiveDataContext.jsx";
 import { useRefetchOnEvent, isIncidentEvent } from "../hooks/useRefetchOnEvent.js";
 import { api, TENANT_ID } from "../lib/api.js";
-import { getOfflineDevices } from "../lib/deviceLiveness.js";
+import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import { latestBatteryHealthPct, batteryHealthColor } from "../lib/batteryHealth.js";
 import { liveBatteryHealthPct, formatEventLine } from "../lib/liveDetail.js";
 import { OPEN_STATUSES } from "./Incidents.jsx";
@@ -102,9 +102,15 @@ function MetricTile({ label, value, color, hint }) {
 }
 
 function DeviceFocus({ d, recent, batteryHealthPct }) {
-  const healthColor = batteryHealthColor(batteryHealthPct);
+  // Stale (offline, health already downgraded to "stale" by deviceHealthDisplay before this
+  // component ever sees it) means the numbers below are a last-known reading, not a current one -
+  // every color/hint on this card is neutralized to a plain faint gray rather than still coloring
+  // a frozen 41-hour-old 96% disk reading red as if it were happening right now.
+  const isStale = d.health === "stale";
+  const faintColor = "var(--text-faint)";
+  const healthColor = isStale ? faintColor : batteryHealthColor(batteryHealthPct);
   const model = d.status_?.detail?.model;
-  const why = issueLine(d.status_, batteryHealthPct);
+  const why = isStale ? `Not reporting — last seen ${timeAgo(d.lastSeenAt)}` : issueLine(d.status_, batteryHealthPct);
   const cpu = d.status_?.cpuPct;
   const ram = d.status_?.ramPct;
   const disk = d.status_?.diskPct;
@@ -122,15 +128,15 @@ function DeviceFocus({ d, recent, batteryHealthPct }) {
           </div>
         </div>
         <span className={`badge ${d.health === "warning" ? "amber" : d.health === "critical" ? "red" : d.health === "healthy" ? "green" : "gray"}`}>
-          {d.health === "unknown" ? "no data" : d.health}
+          {d.health === "unknown" ? "no data" : d.health === "stale" ? "not reporting" : d.health}
         </span>
       </div>
       {why && <p className="sys-card-why">{why}</p>}
       <div className="sys-metrics">
-        <MetricTile label="CPU" value={cpu} color={getUsageColor(cpu, CPU_USAGE_THRESHOLDS)} hint={usageHint(cpu, CPU_USAGE_THRESHOLDS)} />
-        <MetricTile label="Memory" value={ram} color={getUsageColor(ram, RAM_USAGE_THRESHOLDS)} hint={usageHint(ram, RAM_USAGE_THRESHOLDS)} />
-        <MetricTile label="Disk" value={disk} color={getUsageColor(disk, DISK_USAGE_THRESHOLDS)} hint={usageHint(disk, DISK_USAGE_THRESHOLDS)} />
-        <MetricTile label="Battery health" value={batteryHealthPct} color={healthColor} hint={batteryHint(batteryHealthPct)} />
+        <MetricTile label="CPU" value={cpu} color={isStale ? faintColor : getUsageColor(cpu, CPU_USAGE_THRESHOLDS)} hint={isStale ? "Stale" : usageHint(cpu, CPU_USAGE_THRESHOLDS)} />
+        <MetricTile label="Memory" value={ram} color={isStale ? faintColor : getUsageColor(ram, RAM_USAGE_THRESHOLDS)} hint={isStale ? "Stale" : usageHint(ram, RAM_USAGE_THRESHOLDS)} />
+        <MetricTile label="Disk" value={disk} color={isStale ? faintColor : getUsageColor(disk, DISK_USAGE_THRESHOLDS)} hint={isStale ? "Stale" : usageHint(disk, DISK_USAGE_THRESHOLDS)} />
+        <MetricTile label="Battery health" value={batteryHealthPct} color={healthColor} hint={isStale ? "Stale" : batteryHint(batteryHealthPct)} />
       </div>
       <span className="sys-card-go">Open this device <ArrowRight size={14} /></span>
     </Link>
@@ -138,7 +144,7 @@ function DeviceFocus({ d, recent, batteryHealthPct }) {
 }
 
 export default function Dashboard() {
-  const { devices, liveStatusByDevice, events, recentDeviceIds, token, connected } = useLiveData();
+  const { devices, liveStatusByDevice, events, recentDeviceIds, token, connected, offlineDeviceIds, offlineDevices } = useLiveData();
   const navigate = useNavigate();
 
   const [incidents, setIncidents] = useState([]);
@@ -185,13 +191,16 @@ export default function Dashboard() {
   const openIncidentsCount = incidents.filter((i) => OPEN_STATUSES.includes(i.status)).length;
 
   const activeDevices = devices.filter((d) => d.status === "active");
-  const withHealth = activeDevices.map((d) => ({ ...d, status_: liveStatusByDevice[d.id], health: healthFromLiveStatus(liveStatusByDevice[d.id]) }));
+  const withHealth = activeDevices.map((d) => ({
+    ...d,
+    status_: liveStatusByDevice[d.id],
+    health: deviceHealthDisplay(healthFromLiveStatus(liveStatusByDevice[d.id]), offlineDeviceIds.has(d.id)),
+  }));
 
   const healthy = withHealth.filter((d) => d.health === "healthy").length;
   const warning = withHealth.filter((d) => d.health === "warning").length;
   const critical = withHealth.filter((d) => d.health === "critical").length;
   const needsAttention = withHealth.filter((d) => d.health !== "healthy");
-  const offlineDevices = getOfflineDevices(devices, events, liveStatusByDevice);
   const hardwareAffectedCount = new Set(events.filter((e) => e.eventType === "hardware-tamper-detected").map((e) => e.deviceId)).size;
   const waitingRemote = remoteSessions.filter((s) => (s.peerCount ?? 0) < 2);
 
@@ -216,14 +225,20 @@ export default function Dashboard() {
       : needsAttention.length > 1
         ? `${needsAttention.length} devices need attention`
         : "Fleet is healthy";
-  const HEALTH_ORDER = { critical: 0, warning: 1, unknown: 2, healthy: 3 };
+  // stale sorts after real warning/critical (an unconfirmed old reading is worth surfacing, but
+  // below devices actively reporting a real current problem) and above unknown/healthy.
+  const HEALTH_ORDER = { critical: 0, warning: 1, stale: 2, unknown: 3, healthy: 4 };
   const fleetCards = [...withHealth].sort((a, b) => (HEALTH_ORDER[a.health] ?? 9) - (HEALTH_ORDER[b.health] ?? 9));
   const DASH_CARD_LIMIT = 8;
   const shownCards = fleetCards.slice(0, DASH_CARD_LIMIT);
   const hiddenCards = fleetCards.length - shownCards.length;
   const worst = fleetCards.find((d) => d.health !== "healthy");
+  // A stale device's last reading is exactly what shouldn't drive this headline's "why" text -
+  // "not reporting" is the honest reason, not whatever it last measured before it went quiet.
   const attentionWhy = worst
-    ? issueLine(worst.status_, liveBatteryHealthPct(worst.status_, batteryHealthById[worst.id]))
+    ? worst.health === "stale"
+      ? `Not reporting — last seen ${timeAgo(worst.lastSeenAt)}`
+      : issueLine(worst.status_, liveBatteryHealthPct(worst.status_, batteryHealthById[worst.id]))
     : null;
 
   return (

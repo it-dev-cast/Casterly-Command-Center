@@ -6,6 +6,7 @@ import {
   ChevronsLeft, ChevronsRight, Zap, ShieldCheck, ShieldAlert, Sparkles,
 } from "lucide-react";
 import { useLiveData, healthFromLiveStatus } from "../context/LiveDataContext.jsx";
+import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import { api } from "../lib/api.js";
 import { CasterlyMark } from "./CasterlyLogo.jsx";
 
@@ -87,11 +88,11 @@ const NAV_GROUPS = [
 // Real per-device health tick shown next to its status color - the exact same
 // healthFromLiveStatus classification every badge/health column elsewhere in this app already
 // uses, not a separate re-derivation that could quietly disagree with them.
-const TICK_TITLE = { healthy: "Healthy", warning: "Warning", critical: "Critical", unknown: "No data yet" };
+const TICK_TITLE = { healthy: "Healthy", warning: "Warning", critical: "Critical", unknown: "No data yet", stale: "Not reporting" };
 const COLLAPSE_KEY = "casterly_sidebar_collapsed";
 
 export default function Sidebar() {
-  const { events, connected, logout, devices, liveStatusByDevice, token } = useLiveData();
+  const { events, connected, logout, devices, liveStatusByDevice, token, offlineDeviceIds } = useLiveData();
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === "1";
@@ -124,7 +125,7 @@ export default function Sidebar() {
   const pulseTicks = activeDevices.map((d) => ({
     id: d.id,
     hostname: d.hostname,
-    health: healthFromLiveStatus(liveStatusByDevice[d.id]),
+    health: deviceHealthDisplay(healthFromLiveStatus(liveStatusByDevice[d.id]), offlineDeviceIds.has(d.id)),
   }));
   const healthyCount = pulseTicks.filter((t) => t.health === "healthy").length;
   const attentionCount = pulseTicks.filter((t) => t.health === "warning" || t.health === "critical").length;

@@ -688,6 +688,7 @@ select:focus-visible,
 .pulse-tick.warning { background: var(--amber); }
 .pulse-tick.critical { background: var(--red); animation: pulseTick 1.6s ease-in-out infinite; }
 .pulse-tick.unknown { background: var(--border); }
+.pulse-tick.stale { background: var(--text-faint); }
 
 @keyframes pulseTick {
   0%, 100% { opacity: 1; }

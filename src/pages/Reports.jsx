@@ -4,10 +4,9 @@ import { FileText, Monitor, ClipboardList, ShieldAlert, AlertTriangle, CheckCirc
 import StatCard from "../components/StatCard.jsx";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import { api } from "../lib/api.js";
-import { getOfflineDevices } from "../lib/deviceLiveness.js";
 
 export default function Reports() {
-  const { token, devices, events, liveStatusByDevice } = useLiveData();
+  const { token, devices, events, offlineDevices } = useLiveData();
   const [incidents, setIncidents] = useState([]);
   const [incidentsError, setIncidentsError] = useState(null);
 
@@ -17,7 +16,6 @@ export default function Reports() {
     api.listIncidents(token).then(setIncidents).catch((e) => setIncidentsError(e.message));
   }, [token]);
 
-  const offlineDevices = getOfflineDevices(devices, events, liveStatusByDevice);
   const activeDevices = devices.filter((d) => d.status === "active").length;
   const resolvedIncidents = incidents.filter((i) => i.status === "resolved" || i.status === "closed").length;
   // "Open" mirrors Incidents.jsx's own OPEN_STATUSES semantics (everything short of
@@ -52,7 +50,7 @@ export default function Reports() {
         <h3 className="section-title">Devices Currently Offline</h3>
         <p className="section-sub">
           Liveness, not health{" "}
-          <Info size={12} color="var(--text-faint)" style={{ cursor: "help", verticalAlign: -2 }} title="Latest device-offline event, unless live telemetry arrived after it. Health can still look healthy because last readings never expire." />
+          <Info size={12} color="var(--text-faint)" style={{ cursor: "help", verticalAlign: -2 }} title="Real-time: the later of lastSeenAt and live-status recency compared against the tenant's offline threshold, re-checked continuously - not dependent on the offline event still being in the recent event window. A stale device's health shows as 'stale,' not its last reading." />
         </p>
         {offlineDevices.length === 0 ? (
           <div className="empty-note">No active devices are currently offline.</div>

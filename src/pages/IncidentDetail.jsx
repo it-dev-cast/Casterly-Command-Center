@@ -5,7 +5,7 @@ import { useLiveData, healthFromLiveStatus, CPU_USAGE_THRESHOLDS, RAM_USAGE_THRE
 import { useRefetchOnEvent } from "../hooks/useRefetchOnEvent.js";
 import { api } from "../lib/api.js";
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
-import { computeOfflineDeviceIds } from "../lib/deviceLiveness.js";
+import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import StatCard from "../components/StatCard.jsx";
 import EventDetailPanel from "../components/EventDetailPanel.jsx";
 import { STATUS_LABELS, STATUS_TONE } from "./Incidents.jsx";
@@ -43,7 +43,7 @@ const STATUS_FLOW = [
 
 export default function IncidentDetail() {
   const { id } = useParams();
-  const { token, pushToast, devices, liveStatusByDevice, events, connected } = useLiveData();
+  const { token, pushToast, devices, liveStatusByDevice, events, connected, offlineDeviceIds } = useLiveData();
   const [incident, setIncident] = useState(null);
   const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState("");
@@ -126,12 +126,14 @@ export default function IncidentDetail() {
 
   const device = devices.find((d) => d.id === incident.deviceId);
   const liveStatus = liveStatusByDevice[incident.deviceId];
-  const health = healthFromLiveStatus(liveStatus);
-  // Real per-device liveness, same signal DeviceDetail.jsx/Endpoints.jsx already use - takes
-  // priority over the tab-wide SSE `connected` flag when they disagree, so this card can't show
-  // "Live" for a device that's actually gone offline just because this browser tab's own
-  // connection happens to be fine.
-  const deviceIsOffline = computeOfflineDeviceIds(events, liveStatusByDevice).has(incident.deviceId);
+  // Real per-device liveness, computed once centrally in LiveDataContext - takes priority over
+  // the tab-wide SSE `connected` flag when they disagree, so this card can't show "Live" for a
+  // device that's actually gone offline just because this browser tab's own connection happens
+  // to be fine.
+  const deviceIsOffline = offlineDeviceIds.has(incident.deviceId);
+  // Gated on that same liveness signal - a stale device's frozen last reading displays as
+  // "stale," not a live-looking Critical/Warning state.
+  const health = deviceHealthDisplay(healthFromLiveStatus(liveStatus), deviceIsOffline);
 
   // Real Evidence: only ever resolved from this device's own real sourceEventId - never a
   // fabricated relationship. events is the tenant-wide live buffer (last ~100-200), so an old
@@ -186,7 +188,7 @@ export default function IncidentDetail() {
             <div style={{ fontSize: 13, lineHeight: 2 }}>
               <div><span style={{ color: "var(--text-faint)" }}>Hostname: </span>{device.hostname}</div>
               <div><span style={{ color: "var(--text-faint)" }}>Status: </span><span className={`badge ${device.status === "active" ? "green" : "slate"}`}>{device.status}</span></div>
-              <div><span style={{ color: "var(--text-faint)" }}>Health: </span><span className={`badge ${health === "healthy" ? "green" : health === "warning" ? "amber" : health === "critical" ? "red" : "gray"}`}>{health === "unknown" ? "no data" : health}</span></div>
+              <div><span style={{ color: "var(--text-faint)" }}>Health: </span><span className={`badge ${health === "healthy" ? "green" : health === "warning" ? "amber" : health === "critical" ? "red" : "gray"}`}>{health === "unknown" ? "no data" : health === "stale" ? "not reporting" : health}</span></div>
               <div><span style={{ color: "var(--text-faint)" }}>Connection: </span><span style={{ color: deviceIsOffline ? "var(--text-faint)" : connected ? "var(--green)" : "var(--amber)" }}>{deviceIsOffline ? "Offline" : connected ? "Live" : "Reconnecting"}</span></div>
               <div><span style={{ color: "var(--text-faint)" }}>Last Seen: </span>{timeAgo(device.lastSeenAt)}</div>
             </div>
@@ -283,10 +285,10 @@ export default function IncidentDetail() {
         <p className="section-sub" style={{ marginBottom: 12 }}>Real-time telemetry, as of right now — not a snapshot from when this incident occurred</p>
         {liveStatus ? (
           <div className="grid grid-4">
-            <StatCard icon={Cpu} tone={usageTone(liveStatus?.cpuPct, CPU_USAGE_THRESHOLDS)} value={liveStatus?.cpuPct != null ? `${liveStatus.cpuPct}%` : "—"} label="CPU" live={connected && !deviceIsOffline} />
-            <StatCard icon={MemoryStick} tone={usageTone(liveStatus?.ramPct, RAM_USAGE_THRESHOLDS)} value={liveStatus?.ramPct != null ? `${liveStatus.ramPct}%` : "—"} label="RAM" live={connected && !deviceIsOffline} />
-            <StatCard icon={HardDrive} tone={usageTone(liveStatus?.diskPct, DISK_USAGE_THRESHOLDS)} value={liveStatus?.diskPct != null ? `${liveStatus.diskPct}%` : "—"} label="Disk" live={connected && !deviceIsOffline} />
-            <StatCard icon={BatteryMedium} tone={batteryTone(liveStatus?.batteryPct)} value={liveStatus?.batteryPct != null ? `${liveStatus.batteryPct}%` : "—"} label="Battery Charge" live={connected && !deviceIsOffline} />
+            <StatCard icon={Cpu} tone={deviceIsOffline ? "gray" : usageTone(liveStatus?.cpuPct, CPU_USAGE_THRESHOLDS)} value={liveStatus?.cpuPct != null ? `${liveStatus.cpuPct}%` : "—"} label="CPU" live={connected && !deviceIsOffline} />
+            <StatCard icon={MemoryStick} tone={deviceIsOffline ? "gray" : usageTone(liveStatus?.ramPct, RAM_USAGE_THRESHOLDS)} value={liveStatus?.ramPct != null ? `${liveStatus.ramPct}%` : "—"} label="RAM" live={connected && !deviceIsOffline} />
+            <StatCard icon={HardDrive} tone={deviceIsOffline ? "gray" : usageTone(liveStatus?.diskPct, DISK_USAGE_THRESHOLDS)} value={liveStatus?.diskPct != null ? `${liveStatus.diskPct}%` : "—"} label="Disk" live={connected && !deviceIsOffline} />
+            <StatCard icon={BatteryMedium} tone={deviceIsOffline ? "gray" : batteryTone(liveStatus?.batteryPct)} value={liveStatus?.batteryPct != null ? `${liveStatus.batteryPct}%` : "—"} label="Battery Charge" live={connected && !deviceIsOffline} />
           </div>
         ) : (
           <div className="empty-note">No live telemetry currently available for this device.</div>

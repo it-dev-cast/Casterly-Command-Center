@@ -3,7 +3,7 @@ import { Activity, CheckCircle2, AlertTriangle, ShieldAlert, HelpCircle, Cpu, Me
 import StatCard from "../components/StatCard.jsx";
 import { useLiveData, healthFromLiveStatus, CPU_USAGE_THRESHOLDS, RAM_USAGE_THRESHOLDS, DISK_USAGE_THRESHOLDS } from "../context/LiveDataContext.jsx";
 import { useApiHealth } from "../hooks/useApiHealth.js";
-import { computeOfflineDeviceIds } from "../lib/deviceLiveness.js";
+import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 
 function timeAgo(iso) {
   if (!iso) return "never";
@@ -37,7 +37,7 @@ const TONE_COLOR = { green: "var(--green)", amber: "var(--amber)", red: "var(--r
 const COMPACT_THRESHOLD = 3;
 
 export default function Infrastructure() {
-  const { devices, liveStatusByDevice, events, connected } = useLiveData();
+  const { devices, liveStatusByDevice, events, connected, offlineDeviceIds } = useLiveData();
   const { apiHealth, checking: checkingHealth, checkHealth } = useApiHealth();
 
   // Real, derived from the same event buffer every other page already loads (no new fetch) -
@@ -46,12 +46,11 @@ export default function Infrastructure() {
   const lastEventAt = events[0]?.createdAt;
 
   const active = devices.filter((d) => d.status === "active");
-  const offlineIds = computeOfflineDeviceIds(events, liveStatusByDevice);
   const withHealth = active.map((d) => ({
     ...d,
     liveStatus: liveStatusByDevice[d.id],
-    health: healthFromLiveStatus(liveStatusByDevice[d.id]),
-    offline: offlineIds.has(d.id),
+    health: deviceHealthDisplay(healthFromLiveStatus(liveStatusByDevice[d.id]), offlineDeviceIds.has(d.id)),
+    offline: offlineDeviceIds.has(d.id),
   }));
   const healthy = withHealth.filter((d) => d.health === "healthy").length;
   const warning = withHealth.filter((d) => d.health === "warning").length;
@@ -143,26 +142,26 @@ export default function Infrastructure() {
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <span className={`badge ${d.health === "healthy" ? "green" : d.health === "warning" ? "amber" : d.health === "critical" ? "red" : "gray"}`}>
-                      {d.health === "unknown" ? "no data" : d.health}
+                      {d.health === "unknown" ? "no data" : d.health === "stale" ? "not reporting" : d.health}
                     </span>
                     <span className={`badge ${d.offline ? "gray" : "green"}`}>{d.offline ? "offline" : "online"}</span>
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 10 }}>
                   <div style={{ textAlign: "center" }}>
-                    <Cpu size={13} color={TONE_COLOR[usageTone(d.liveStatus?.cpuPct, CPU_USAGE_THRESHOLDS)]} />
+                    <Cpu size={13} color={d.offline ? TONE_COLOR.gray : TONE_COLOR[usageTone(d.liveStatus?.cpuPct, CPU_USAGE_THRESHOLDS)]} />
                     <div className="mono" style={{ fontSize: 12, fontWeight: 600, marginTop: 2 }}>{d.liveStatus?.cpuPct ?? "—"}%</div>
                   </div>
                   <div style={{ textAlign: "center" }}>
-                    <MemoryStick size={13} color={TONE_COLOR[usageTone(d.liveStatus?.ramPct, RAM_USAGE_THRESHOLDS)]} />
+                    <MemoryStick size={13} color={d.offline ? TONE_COLOR.gray : TONE_COLOR[usageTone(d.liveStatus?.ramPct, RAM_USAGE_THRESHOLDS)]} />
                     <div className="mono" style={{ fontSize: 12, fontWeight: 600, marginTop: 2 }}>{d.liveStatus?.ramPct ?? "—"}%</div>
                   </div>
                   <div style={{ textAlign: "center" }}>
-                    <HardDrive size={13} color={TONE_COLOR[usageTone(d.liveStatus?.diskPct, DISK_USAGE_THRESHOLDS)]} />
+                    <HardDrive size={13} color={d.offline ? TONE_COLOR.gray : TONE_COLOR[usageTone(d.liveStatus?.diskPct, DISK_USAGE_THRESHOLDS)]} />
                     <div className="mono" style={{ fontSize: 12, fontWeight: 600, marginTop: 2 }}>{d.liveStatus?.diskPct ?? "—"}%</div>
                   </div>
                   <div style={{ textAlign: "center" }}>
-                    <BatteryMedium size={13} color={TONE_COLOR[batteryTone(d.liveStatus?.batteryPct)]} />
+                    <BatteryMedium size={13} color={d.offline ? TONE_COLOR.gray : TONE_COLOR[batteryTone(d.liveStatus?.batteryPct)]} />
                     <div className="mono" style={{ fontSize: 12, fontWeight: 600, marginTop: 2 }}>{d.liveStatus?.batteryPct ?? "—"}%</div>
                   </div>
                 </div>
@@ -179,7 +178,7 @@ export default function Infrastructure() {
                   <tr key={d.id}>
                     <td className="mono" style={{ fontSize: 11.5 }}><Link to={`/endpoints/${d.id}`} style={{ color: "var(--accent)" }}>{d.id}</Link></td>
                     <td className="truncate" style={{ fontWeight: 600, maxWidth: 260 }} title={d.hostname}>{d.hostname}</td>
-                    <td><span className={`badge ${d.health === "healthy" ? "green" : d.health === "warning" ? "amber" : d.health === "critical" ? "red" : "gray"}`}>{d.health === "unknown" ? "no data" : d.health}</span></td>
+                    <td><span className={`badge ${d.health === "healthy" ? "green" : d.health === "warning" ? "amber" : d.health === "critical" ? "red" : "gray"}`}>{d.health === "unknown" ? "no data" : d.health === "stale" ? "not reporting" : d.health}</span></td>
                     <td><span className={`badge ${d.offline ? "gray" : "green"}`}>{d.offline ? "offline" : "online"}</span></td>
                     <td className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{timeAgo(d.lastSeenAt)}</td>
                   </tr>

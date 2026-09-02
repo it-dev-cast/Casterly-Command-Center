@@ -1,7 +1,17 @@
-import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { api } from "../lib/api.js";
 import { subscribeTenantStream } from "../lib/sse.js";
 import { formatEventLine } from "../lib/liveDetail.js";
+import { computeOfflineDeviceIds } from "../lib/deviceLiveness.js";
+
+// How often liveness (offlineDeviceIds below) is re-evaluated purely for the passage of time -
+// a device going stale isn't a new event arriving, it's the absence of one, so something has to
+// force a recheck against the clock on an interval rather than only whenever devices/
+// liveStatusByDevice themselves change. 30s keeps detection within one order of magnitude of the
+// backend's own 60s offline-detector sweep (and of the shortest real threshold an admin can set,
+// 1 minute - see backend/settings.go's minOfflineThresholdMinutes) without polling pointlessly
+// often.
+const LIVENESS_TICK_MS = 30000;
 
 const LiveDataContext = createContext(null);
 const TOKEN_STORAGE_KEY = "casterly_admin_token";
@@ -20,7 +30,11 @@ export const DISK_USAGE_THRESHOLDS = { warning: 75, critical: 90 };
 // healthFromLiveStatus mirrors the same thresholds used throughout this dashboard's design -
 // this backend stores raw percentages only (see live.go's LiveStatus), it doesn't compute a
 // health label itself, so the label is derived here, client-side, the same way this UI would
-// derive it from any other raw metrics source.
+// derive it from any other raw metrics source. Deliberately unaware of liveness (whether that
+// reading is still current) - it only ever answers "what did the last reading say." Every
+// display that shows a device's health to a user should pass this result through
+// deviceHealthDisplay (deviceLiveness.js) before rendering it, not use it directly, so a stale
+// device's frozen last reading doesn't display as a live Critical/Warning state.
 export function healthFromLiveStatus(status) {
   if (!status) return "unknown";
   const { cpuPct, ramPct, diskPct, batteryPct } = status;
@@ -98,9 +112,41 @@ export function LiveDataProvider({ children }) {
   const [connected, setConnected] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [recentDeviceIds, setRecentDeviceIds] = useState(new Set());
+  const [offlineThresholdMinutes, setOfflineThresholdMinutes] = useState(null);
+  const [livenessNow, setLivenessNow] = useState(() => Date.now());
   const toastIdRef = useRef(0);
   const hostnameByDeviceRef = useRef({});
   const healthByDeviceRef = useRef({});
+
+  // The real, admin-configured threshold (Settings.jsx already lets an operator edit this same
+  // value) - fetched once per session rather than on a poll, since it changes rarely and there's
+  // no live push for it; a change made in Settings takes effect on this tab's next reload, same
+  // as it already only took effect for the backend's own sweep within one 60s cycle before this.
+  useEffect(() => {
+    if (!token) return;
+    api.getOfflineThreshold(token).then((r) => setOfflineThresholdMinutes(r.minutes)).catch(() => {});
+  }, [token]);
+
+  // See LIVENESS_TICK_MS's own comment above - staleness must be re-evaluated on a clock, not
+  // only when new data arrives.
+  useEffect(() => {
+    const id = setInterval(() => setLivenessNow(Date.now()), LIVENESS_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // Single source of truth for every consumer that needs to know which active devices are
+  // currently offline (Dashboard, Action Center, Endpoints, Device 360, Incident Detail,
+  // Infrastructure, Reports) - computed once here instead of duplicated per page, and real-time
+  // correct regardless of the tenant's live event-buffer window (see computeOfflineDeviceIds's
+  // own comment on why that matters).
+  const offlineDeviceIds = useMemo(
+    () => computeOfflineDeviceIds(devices, liveStatusByDevice, offlineThresholdMinutes, livenessNow),
+    [devices, liveStatusByDevice, offlineThresholdMinutes, livenessNow],
+  );
+  const offlineDevices = useMemo(
+    () => devices.filter((d) => offlineDeviceIds.has(d.id)),
+    [devices, offlineDeviceIds],
+  );
 
   useEffect(() => {
     hostnameByDeviceRef.current = Object.fromEntries(devices.map((d) => [d.id, d.hostname]));
@@ -288,6 +334,7 @@ export function LiveDataProvider({ children }) {
     toasts, recentDeviceIds, pushToast, dismissToast,
     revokeDevice, resetFingerprint, setDeviceTags,
     notifications, markAllNotificationsRead, clearAllNotifications,
+    offlineDeviceIds, offlineDevices,
   };
 
   return <LiveDataContext.Provider value={value}>{children}</LiveDataContext.Provider>;

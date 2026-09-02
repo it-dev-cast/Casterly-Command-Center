@@ -13,7 +13,7 @@ import { predictDeviceHealth } from "../lib/prediction.js";
 import { latestBatteryHealthPct, latestSsdWearPct, batteryHealthTone, ssdWearTone } from "../lib/batteryHealth.js";
 import { getLiveDetail, dash, onOff, liveBatteryHealthPct, liveSsdWearPct, formatEventLine } from "../lib/liveDetail.js";
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
-import { computeOfflineDeviceIds } from "../lib/deviceLiveness.js";
+import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import TagEditor from "../components/TagEditor.jsx";
 import StatCard from "../components/StatCard.jsx";
 import ChainIntegrityCard from "../components/ChainIntegrityCard.jsx";
@@ -94,7 +94,7 @@ const TABS = [
 
 export default function DeviceDetail() {
   const { id } = useParams();
-  const { token, devices, liveStatusByDevice, events, connected, revokeDevice, resetFingerprint, pushToast } = useLiveData();
+  const { token, devices, liveStatusByDevice, events, connected, revokeDevice, resetFingerprint, pushToast, offlineDeviceIds } = useLiveData();
   const { confirmAsync } = useDialog();
   const [snapshots, setSnapshots] = useState([]);
   const [snapshotsError, setSnapshotsError] = useState(null);
@@ -116,13 +116,18 @@ export default function DeviceDetail() {
   const device = devices.find((d) => d.id === id);
   const liveStatus = liveStatusByDevice[id];
   const detail = getLiveDetail(liveStatus);
-  const health = healthFromLiveStatus(liveStatus);
-  // Real liveness (device-offline/-online events), distinct from `connected` (this browser tab's
-  // SSE pipe) - reused from deviceLiveness.js rather than re-derived, same signal Dashboard/Action
-  // Center already show. A device can be genuinely offline while this tab's SSE connection is
-  // still fine, so "LIVE" telemetry shouldn't claim currency it doesn't have in that case.
-  const deviceIsOffline = computeOfflineDeviceIds(events, liveStatusByDevice).has(id);
-  const issues = currentIssues(liveStatus);
+  // Real liveness, computed once centrally in LiveDataContext (offlineDeviceIds) - distinct from
+  // `connected` (this browser tab's SSE pipe). A device can be genuinely offline while this tab's
+  // SSE connection is still fine, so "LIVE" telemetry shouldn't claim currency it doesn't have in
+  // that case.
+  const deviceIsOffline = offlineDeviceIds.has(id);
+  // health is gated on liveness before this component ever branches on it - a stale device's
+  // frozen last reading displays as "stale," not a live-looking Critical/Warning state.
+  const health = deviceHealthDisplay(healthFromLiveStatus(liveStatus), deviceIsOffline);
+  // Same gate applied to every per-metric tone below (Overview/Telemetry StatCard grids) - a
+  // stale 96% disk reading from 41 hours ago shouldn't still render red as if current.
+  const toneIfLive = (t) => (deviceIsOffline ? "gray" : t);
+  const issues = deviceIsOffline ? [] : currentIssues(liveStatus);
   const deviceEvents = events.filter((e) => e.deviceId === id);
   const deviceAlerts = deviceEvents.filter((e) => e.severity !== "info");
   const deviceActivity = deviceEvents.filter((e) => e.severity === "info");
@@ -280,7 +285,7 @@ export default function DeviceDetail() {
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span className="section-sub">Health</span>
           <span className={`badge ${health === "healthy" ? "green" : health === "warning" ? "amber" : health === "critical" ? "red" : "gray"}`}>
-            {health === "unknown" ? "no data" : health}
+            {health === "unknown" ? "no data" : health === "stale" ? "not reporting" : health}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, fontWeight: 600, color: deviceIsOffline ? "var(--text-faint)" : connected ? "var(--green)" : "var(--amber)" }}>
@@ -349,12 +354,12 @@ export default function DeviceDetail() {
             <p className="section-sub" style={{ marginBottom: 12 }}>Same numbers the agent shows. Charge is not battery health. Missing sensors are —.</p>
             {liveStatus ? (
               <div className="grid grid-3">
-                <StatCard icon={Cpu} tone={usageTone(liveStatus.cpuPct, CPU_USAGE_THRESHOLDS)} value={dash(liveStatus.cpuPct, "%")} label="CPU" meta={detail.cpuName} live={liveDot} />
-                <StatCard icon={MemoryStick} tone={usageTone(liveStatus.ramPct, RAM_USAGE_THRESHOLDS)} value={dash(liveStatus.ramPct, "%")} label="RAM" meta={detail.memTotalGB != null ? `${detail.memTotalGB} GB` : null} live={liveDot} />
-                <StatCard icon={HardDrive} tone={usageTone(liveStatus.diskPct, DISK_USAGE_THRESHOLDS)} value={dash(liveStatus.diskPct, "%")} label="Disk" meta={detail.driveModel} live={liveDot} />
-                <StatCard icon={BatteryCharging} tone={batteryTone(liveStatus.batteryPct)} value={dash(liveStatus.batteryPct, "%")} label="Charge" live={liveDot} />
-                <StatCard icon={BatteryMedium} tone={batteryHealthTone(batteryHealthPct)} value={dash(batteryHealthPct, "%")} label="Battery Health" live={liveDot && detail.batteryHealthPct != null} />
-                <StatCard icon={Shield} tone={detail.securityHealthPct == null ? "gray" : detail.securityHealthPct === 100 ? "green" : "amber"} value={dash(detail.securityHealthPct, "%")} label="Security" live={liveDot && detail.securityHealthPct != null} />
+                <StatCard icon={Cpu} tone={toneIfLive(usageTone(liveStatus.cpuPct, CPU_USAGE_THRESHOLDS))} value={dash(liveStatus.cpuPct, "%")} label="CPU" meta={detail.cpuName} live={liveDot} />
+                <StatCard icon={MemoryStick} tone={toneIfLive(usageTone(liveStatus.ramPct, RAM_USAGE_THRESHOLDS))} value={dash(liveStatus.ramPct, "%")} label="RAM" meta={detail.memTotalGB != null ? `${detail.memTotalGB} GB` : null} live={liveDot} />
+                <StatCard icon={HardDrive} tone={toneIfLive(usageTone(liveStatus.diskPct, DISK_USAGE_THRESHOLDS))} value={dash(liveStatus.diskPct, "%")} label="Disk" meta={detail.driveModel} live={liveDot} />
+                <StatCard icon={BatteryCharging} tone={toneIfLive(batteryTone(liveStatus.batteryPct))} value={dash(liveStatus.batteryPct, "%")} label="Charge" live={liveDot} />
+                <StatCard icon={BatteryMedium} tone={toneIfLive(batteryHealthTone(batteryHealthPct))} value={dash(batteryHealthPct, "%")} label="Battery Health" live={liveDot && detail.batteryHealthPct != null} />
+                <StatCard icon={Shield} tone={toneIfLive(detail.securityHealthPct == null ? "gray" : detail.securityHealthPct === 100 ? "green" : "amber")} value={dash(detail.securityHealthPct, "%")} label="Security" live={liveDot && detail.securityHealthPct != null} />
               </div>
             ) : (
               <div className="empty-note">No live telemetry received from this device yet.</div>
@@ -443,16 +448,16 @@ export default function DeviceDetail() {
               a device that went offline 10 minutes ago shouldn't still show a pulsing "Live" dot
               just because its last reported values happen to still be in memory. */}
           <div className="grid grid-3">
-            <StatCard icon={Cpu} tone={usageTone(liveStatus?.cpuPct, CPU_USAGE_THRESHOLDS)} value={dash(liveStatus?.cpuPct, "%")} label="CPU" meta={detail.cpuName} live={liveDot} />
-            <StatCard icon={MemoryStick} tone={usageTone(liveStatus?.ramPct, RAM_USAGE_THRESHOLDS)} value={dash(liveStatus?.ramPct, "%")} label="RAM" meta={detail.memTotalGB != null ? `${detail.memTotalGB} GB` : null} live={liveDot} />
-            <StatCard icon={HardDrive} tone={usageTone(liveStatus?.diskPct, DISK_USAGE_THRESHOLDS)} value={dash(liveStatus?.diskPct, "%")} label="Disk" meta={detail.diskFreeGB != null ? `${detail.diskFreeGB} GB free` : null} live={liveDot} />
-            <StatCard icon={BatteryCharging} tone={batteryTone(liveStatus?.batteryPct)} value={dash(liveStatus?.batteryPct, "%")} label="Charge" live={liveDot} />
-            <StatCard icon={BatteryMedium} tone={batteryHealthTone(batteryHealthPct)} value={dash(batteryHealthPct, "%")} label="Battery Health" live={liveDot && detail.batteryHealthPct != null} />
-            <StatCard icon={Disc} tone={ssdWearTone(ssdWearPct)} value={dash(ssdWearPct, "%")} label="SSD Wear" live={liveDot && detail.storageWearPct != null} />
-            <StatCard icon={Thermometer} tone={detail.cpuTempC == null ? "gray" : detail.cpuTempC >= 85 ? "red" : "teal"} value={detail.cpuTempC != null ? `${Math.round(detail.cpuTempC)}°C` : "—"} label="CPU Temp" live={liveDot && detail.cpuTempC != null} />
-            <StatCard icon={Gpu} tone={detail.gpuUtilPct == null ? "gray" : "purple"} value={dash(detail.gpuUtilPct, "%")} label="GPU" meta={detail.gpuName} live={liveDot && detail.gpuUtilPct != null} />
-            <StatCard icon={Thermometer} tone={detail.gpuTempC == null ? "gray" : "purple"} value={detail.gpuTempC != null ? `${Math.round(detail.gpuTempC)}°C` : "—"} label="GPU Temp" live={liveDot && detail.gpuTempC != null} />
-            <StatCard icon={Shield} tone={detail.securityHealthPct == null ? "gray" : detail.securityHealthPct === 100 ? "green" : "amber"} value={dash(detail.securityHealthPct, "%")} label="Security" live={liveDot && detail.securityHealthPct != null} />
+            <StatCard icon={Cpu} tone={toneIfLive(usageTone(liveStatus?.cpuPct, CPU_USAGE_THRESHOLDS))} value={dash(liveStatus?.cpuPct, "%")} label="CPU" meta={detail.cpuName} live={liveDot} />
+            <StatCard icon={MemoryStick} tone={toneIfLive(usageTone(liveStatus?.ramPct, RAM_USAGE_THRESHOLDS))} value={dash(liveStatus?.ramPct, "%")} label="RAM" meta={detail.memTotalGB != null ? `${detail.memTotalGB} GB` : null} live={liveDot} />
+            <StatCard icon={HardDrive} tone={toneIfLive(usageTone(liveStatus?.diskPct, DISK_USAGE_THRESHOLDS))} value={dash(liveStatus?.diskPct, "%")} label="Disk" meta={detail.diskFreeGB != null ? `${detail.diskFreeGB} GB free` : null} live={liveDot} />
+            <StatCard icon={BatteryCharging} tone={toneIfLive(batteryTone(liveStatus?.batteryPct))} value={dash(liveStatus?.batteryPct, "%")} label="Charge" live={liveDot} />
+            <StatCard icon={BatteryMedium} tone={toneIfLive(batteryHealthTone(batteryHealthPct))} value={dash(batteryHealthPct, "%")} label="Battery Health" live={liveDot && detail.batteryHealthPct != null} />
+            <StatCard icon={Disc} tone={toneIfLive(ssdWearTone(ssdWearPct))} value={dash(ssdWearPct, "%")} label="SSD Wear" live={liveDot && detail.storageWearPct != null} />
+            <StatCard icon={Thermometer} tone={toneIfLive(detail.cpuTempC == null ? "gray" : detail.cpuTempC >= 85 ? "red" : "teal")} value={detail.cpuTempC != null ? `${Math.round(detail.cpuTempC)}°C` : "—"} label="CPU Temp" live={liveDot && detail.cpuTempC != null} />
+            <StatCard icon={Gpu} tone={toneIfLive(detail.gpuUtilPct == null ? "gray" : "purple")} value={dash(detail.gpuUtilPct, "%")} label="GPU" meta={detail.gpuName} live={liveDot && detail.gpuUtilPct != null} />
+            <StatCard icon={Thermometer} tone={toneIfLive(detail.gpuTempC == null ? "gray" : "purple")} value={detail.gpuTempC != null ? `${Math.round(detail.gpuTempC)}°C` : "—"} label="GPU Temp" live={liveDot && detail.gpuTempC != null} />
+            <StatCard icon={Shield} tone={toneIfLive(detail.securityHealthPct == null ? "gray" : detail.securityHealthPct === 100 ? "green" : "amber")} value={dash(detail.securityHealthPct, "%")} label="Security" live={liveDot && detail.securityHealthPct != null} />
           </div>
           {!liveStatus && <div className="empty-note" style={{ marginTop: 12 }}>No live telemetry received from this device yet.</div>}
           {liveStatus && deviceIsOffline && <div className="empty-note" style={{ marginTop: 12, color: "var(--amber)" }}>This device is currently offline — the values above are its last reported readings, not current.</div>}

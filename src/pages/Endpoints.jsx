@@ -4,7 +4,7 @@ import { Monitor, CheckCircle2, AlertTriangle, ShieldX, WifiOff, Download, Arrow
 import GlanceCell from "../components/GlanceCell.jsx";
 import { useLiveData, healthFromLiveStatus, getUsageTextColor, CPU_USAGE_THRESHOLDS, RAM_USAGE_THRESHOLDS, DISK_USAGE_THRESHOLDS } from "../context/LiveDataContext.jsx";
 import { useDialog } from "../context/DialogContext.jsx";
-import { computeOfflineDeviceIds } from "../lib/deviceLiveness.js";
+import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import { api } from "../lib/api.js";
 import { latestBatteryHealthPct, batteryHealthColor } from "../lib/batteryHealth.js";
 import { getLiveDetail, liveBatteryHealthPct } from "../lib/liveDetail.js";
@@ -77,7 +77,7 @@ function exportToCsv(rows) {
 }
 
 export default function Endpoints() {
-  const { devices, liveStatusByDevice, events, recentDeviceIds, revokeDevice, resetFingerprint, pushToast, token } = useLiveData();
+  const { devices, liveStatusByDevice, events, recentDeviceIds, revokeDevice, resetFingerprint, pushToast, token, offlineDeviceIds } = useLiveData();
   const { confirmAsync } = useDialog();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -150,17 +150,12 @@ export default function Endpoints() {
   for (const e of events) {
     if (!(e.deviceId in lastEventByDevice)) lastEventByDevice[e.deviceId] = e;
   }
-  // Real per-device liveness, reused from the same utility Dashboard/Action Center/Device 360
-  // already use - not re-derived. Only meaningful for active devices; a revoked device isn't
-  // expected to report at all, so it isn't "offline," it's a different real lifecycle state.
-  const offlineIds = computeOfflineDeviceIds(events, liveStatusByDevice);
-
   const withHealth = devices.map((d) => ({
     ...d,
     liveStatus: liveStatusByDevice[d.id],
-    health: healthFromLiveStatus(liveStatusByDevice[d.id]),
+    health: deviceHealthDisplay(healthFromLiveStatus(liveStatusByDevice[d.id]), offlineDeviceIds.has(d.id)),
     lastEvent: lastEventByDevice[d.id],
-    connection: d.status !== "active" ? null : offlineIds.has(d.id) ? "offline" : "online",
+    connection: d.status !== "active" ? null : offlineDeviceIds.has(d.id) ? "offline" : "online",
     batteryHealthPct: liveBatteryHealthPct(liveStatusByDevice[d.id], batteryHealthById[d.id] ?? null),
   }));
 
@@ -301,7 +296,7 @@ export default function Endpoints() {
               <>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span className="section-sub" style={{ fontSize: 11 }}>Health</span>
-                  {["all", "healthy", "warning", "critical", "unknown"].map((h) => (
+                  {["all", "healthy", "warning", "critical", "stale", "unknown"].map((h) => (
                     <button
                       key={h}
                       className={`pill-select ${healthFilter === h ? "active" : ""}`}
@@ -410,13 +405,13 @@ export default function Endpoints() {
                     </>
                   ) : (
                     <>
-                      <td className="mono" style={{ textAlign: "right", fontWeight: 600, color: getUsageTextColor(d.liveStatus?.cpuPct, CPU_USAGE_THRESHOLDS) }}>{d.liveStatus?.cpuPct != null ? `${d.liveStatus.cpuPct}%` : "—"}</td>
-                      <td className="mono" style={{ textAlign: "right", fontWeight: 600, color: getUsageTextColor(d.liveStatus?.ramPct, RAM_USAGE_THRESHOLDS) }}>{d.liveStatus?.ramPct != null ? `${d.liveStatus.ramPct}%` : "—"}</td>
-                      <td className="mono" style={{ textAlign: "right", fontWeight: 600, color: getUsageTextColor(d.liveStatus?.diskPct, DISK_USAGE_THRESHOLDS) }}>{d.liveStatus?.diskPct != null ? `${d.liveStatus.diskPct}%` : "—"}</td>
-                      <td className="mono" style={{ textAlign: "right", fontWeight: 600, color: batteryHealthColor(d.batteryHealthPct) }}>{d.batteryHealthPct != null ? `${d.batteryHealthPct}%` : "—"}</td>
+                      <td className="mono" style={{ textAlign: "right", fontWeight: 600, color: d.health === "stale" ? "var(--text-faint)" : getUsageTextColor(d.liveStatus?.cpuPct, CPU_USAGE_THRESHOLDS) }}>{d.liveStatus?.cpuPct != null ? `${d.liveStatus.cpuPct}%` : "—"}</td>
+                      <td className="mono" style={{ textAlign: "right", fontWeight: 600, color: d.health === "stale" ? "var(--text-faint)" : getUsageTextColor(d.liveStatus?.ramPct, RAM_USAGE_THRESHOLDS) }}>{d.liveStatus?.ramPct != null ? `${d.liveStatus.ramPct}%` : "—"}</td>
+                      <td className="mono" style={{ textAlign: "right", fontWeight: 600, color: d.health === "stale" ? "var(--text-faint)" : getUsageTextColor(d.liveStatus?.diskPct, DISK_USAGE_THRESHOLDS) }}>{d.liveStatus?.diskPct != null ? `${d.liveStatus.diskPct}%` : "—"}</td>
+                      <td className="mono" style={{ textAlign: "right", fontWeight: 600, color: d.health === "stale" ? "var(--text-faint)" : batteryHealthColor(d.batteryHealthPct) }}>{d.batteryHealthPct != null ? `${d.batteryHealthPct}%` : "—"}</td>
                       <td>
                         <span className={`badge ${d.health === "healthy" ? "green" : d.health === "warning" ? "amber" : d.health === "critical" ? "red" : "gray"}`}>
-                          {d.health === "unknown" ? "no data" : d.health}
+                          {d.health === "unknown" ? "no data" : d.health === "stale" ? "not reporting" : d.health}
                         </span>
                       </td>
                       <td>
@@ -424,6 +419,7 @@ export default function Endpoints() {
                       </td>
                       <td>
                         {(() => {
+                          if (d.health === "stale") return <span style={{ color: "var(--text-faint)" }}>Not reporting</span>;
                           const s = currentSignal(d.liveStatus);
                           if (!s) return <span style={{ color: "var(--text-faint)" }}>—</span>;
                           return <span className={`badge ${s.tone}`}>{s.label}</span>;
