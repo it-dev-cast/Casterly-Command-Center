@@ -313,6 +313,23 @@ export function LiveDataProvider({ children }) {
     [token],
   );
 
+  // PRD §6.4 Warranty State Machine - the real, human-confirmed adjudication step UnderReview/
+  // Voided require (see backend/warranty.go's own comment). "confirm-voided" optimistically
+  // stamps warrantyVoidedAt locally (same real-state-change-deserves-immediate-feedback reasoning
+  // as revokeDevice's own optimistic status update above) - the exact server timestamp reaches
+  // this tab on the next real device-list refresh regardless, so a locally-approximate one here
+  // is honest enough for immediate UI feedback. "dismiss" gets no optimistic update, matching
+  // resetFingerprint's own real effect it reuses server-side.
+  const warrantyReview = useCallback(
+    async (deviceId, decision) => {
+      await api.warrantyReview(token, deviceId, decision);
+      if (decision === "confirm-voided") {
+        setDevices((prev) => prev.map((d) => (d.id === deviceId ? { ...d, warrantyVoidedAt: new Date().toISOString() } : d)));
+      }
+    },
+    [token],
+  );
+
   const setDeviceTags = useCallback(
     async (deviceId, tags) => {
       const result = await api.setDeviceTags(token, deviceId, tags);
@@ -345,7 +362,7 @@ export function LiveDataProvider({ children }) {
     token, authError, login, logout,
     devices, liveStatusByDevice, events, connected,
     toasts, recentDeviceIds, pushToast, dismissToast,
-    revokeDevice, resetFingerprint, setDeviceTags,
+    revokeDevice, resetFingerprint, warrantyReview, setDeviceTags,
     notifications, markAllNotificationsRead, clearAllNotifications,
     offlineDeviceIds, offlineDevices,
     entitlement,

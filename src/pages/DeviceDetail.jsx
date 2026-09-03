@@ -119,7 +119,7 @@ const TABS = [
 
 export default function DeviceDetail() {
   const { id } = useParams();
-  const { token, devices, liveStatusByDevice, events, connected, revokeDevice, resetFingerprint, pushToast, offlineDeviceIds, entitlement } = useLiveData();
+  const { token, devices, liveStatusByDevice, events, connected, revokeDevice, resetFingerprint, warrantyReview, pushToast, offlineDeviceIds, entitlement } = useLiveData();
   const { confirmAsync } = useDialog();
   const [snapshots, setSnapshots] = useState([]);
   const [snapshotsError, setSnapshotsError] = useState(null);
@@ -265,6 +265,38 @@ export default function DeviceDetail() {
     }
   }
 
+  // PRD §6.4 Warranty State Machine - the real, human-confirmed adjudication step UnderReview
+  // requires. Deliberately sticky, with no "un-void" path (see backend/warranty.go's own
+  // comment) - the confirm prompt says so plainly rather than letting an admin click through
+  // without realizing this can't be undone from here.
+  async function handleConfirmVoided() {
+    const ok = await confirmAsync(`Confirm warranty voided for ${id}? This flags the reviewed tamper/identity event as genuine. This cannot be undone from here.`, "Confirm Voided");
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await warrantyReview(id, "confirm-voided");
+      pushToast("success", "Warranty voided", "Recorded as a confirmed, genuine hardware-tamper/identity finding.");
+    } catch (e) {
+      pushToast("error", "Confirm voided failed", e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDismissReview() {
+    const ok = await confirmAsync(`Dismiss the warranty review for ${id} as a false positive? This resets its hardware baseline - the next hardware-check captures a fresh one.`, "Dismiss");
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await warrantyReview(id, "dismiss");
+      pushToast("success", "Review dismissed", "Baseline reset — next hardware-check will capture a fresh one.");
+    } catch (e) {
+      pushToast("error", "Dismiss failed", e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // PRD §9 Self-Healing v1 remote dispatch - enqueues on the backend; the device itself discovers
   // and runs it on its own next heartbeat poll (handleHeartbeat's pendingCommand), not
   // immediately. The 409 case (a command already pending for this device - v1's real, disclosed
@@ -372,6 +404,15 @@ export default function DeviceDetail() {
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
           <button className="btn" onClick={handleResetFingerprint} disabled={busy}>Reset FP</button>
+          {/* PRD §6.4 Warranty State Machine - the real adjudication actions, shown only while a
+              review is actually pending (warrantyState === "UnderReview"), matching the same
+              conditional convention Revoke already uses just below. */}
+          {warrantyState === "UnderReview" && (
+            <>
+              <button className="btn danger" onClick={handleConfirmVoided} disabled={busy}>Confirm Voided</button>
+              <button className="btn" onClick={handleDismissReview} disabled={busy}>Dismiss</button>
+            </>
+          )}
           {device.status === "active" && <button className="btn danger" onClick={handleRevoke} disabled={busy}>Revoke</button>}
         </div>
       </div>

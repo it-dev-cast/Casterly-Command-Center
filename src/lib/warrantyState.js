@@ -7,13 +7,15 @@ import { isDeviceCurrentlyTampered } from "./deviceHealthScore.js";
 // duplicate this derivation server-side for the dashboard the way backend/warranty.go has to for
 // the device-authenticated agent path, which has no bulk event access of its own.
 //
-// Only three of the PRD's five states are reachable, on purpose - the same three
-// backend/warranty.go can honestly derive:
-//   - Active:  baseline intact AND the tenant's real entitlement is in good standing.
-//   - Warning: an unresolved hardware-tamper-detected or device-identity-invalid event.
-//   - Expired: the tenant's real entitlement has lapsed.
-// UnderReview/Voided need a real, human-confirmed adjudication workflow (PRD's "formal ADE
-// verification") that doesn't exist anywhere in this project yet - never fabricated here.
+// All five of the PRD's states are reachable now, mirroring backend/warranty.go exactly:
+//   - Active:      baseline intact AND the tenant's real entitlement is in good standing.
+//   - UnderReview: an unresolved hardware-tamper-detected or device-identity-invalid event, no
+//     warranty-review decision made yet either way.
+//   - Voided:      device.warrantyVoidedAt is set - a real, human-confirmed decision (see
+//     DeviceDetail.jsx's Confirm Voided action). Checked first, before anything else -
+//     deliberately sticky, with no "un-void" path, so a later fingerprint reset never silently
+//     un-voids a device.
+//   - Expired:     the tenant's real entitlement has lapsed.
 
 // device-identity-invalid has no reset lifecycle of its own yet (no "Reset Device Identity" flow
 // exists - see backend/device_identity.go's own comment on this being a known, deliberate gap),
@@ -38,19 +40,23 @@ const ENTITLEMENT_TO_WARRANTY = {
 // Grace/Expired/Suspended) - null while it hasn't loaded yet, same "unknown, not fabricated"
 // treatment as everything else here.
 export function computeWarrantyState({ device, events, entitlementStatus }) {
+  if (device?.warrantyVoidedAt) return "Voided";
   if (!device?.fingerprintLockedAt) return null;
   if (isDeviceCurrentlyTampered(device.id, events) || hasUnresolvedDeviceIdentityEvent(device.id, events)) {
-    return "Warning";
+    return "UnderReview";
   }
   if (!entitlementStatus) return null;
   return ENTITLEMENT_TO_WARRANTY[entitlementStatus] ?? null;
 }
 
-// Same tone convention as healthScoreTone/STATUS_TONE elsewhere in this app (green/amber/red/gray
-// badge classes), not a new color system.
+// Same tone convention as healthScoreTone/STATUS_TONE elsewhere in this app (green/amber/red/blue/
+// gray - the real, complete set of .badge tone classes index.css defines; no "indigo" exists here
+// the way the Tauri agent's own separate CSS does, so UnderReview reuses "blue" (this app's own
+// neutral-informational tone) rather than introducing a new color token for one badge).
 export function warrantyStateTone(state) {
   if (state === "Active") return "green";
-  if (state === "Warning") return "amber";
+  if (state === "UnderReview") return "blue";
+  if (state === "Voided") return "red";
   if (state === "Expired") return "red";
   return "gray";
 }

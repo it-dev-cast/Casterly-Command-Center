@@ -71,10 +71,12 @@ export default function HardwareIntegrity() {
     events.some((e) => e.deviceId === d.id && (e.eventType === "hardware-tamper-detected" || e.eventType === "hardware-fingerprint-reset"))
   );
   // Real, honest v1 of PRD §6.4 (lib/warrantyState.js) - this page's own tamper/identity signal
-  // is exactly what drives a device into Warranty "Warning", so it's the natural place to
-  // surface how many devices that's currently true for, fleet-wide.
-  const warrantyWarningCount = devices.filter(
-    (d) => computeWarrantyState({ device: d, events, entitlementStatus: entitlement?.status }) === "Warning"
+  // is exactly what drives a device into Warranty "UnderReview" (real, human-confirmed
+  // adjudication now available via DeviceDetail.jsx's Confirm Voided/Dismiss actions - see
+  // backend/warranty.go's own comment), so it's the natural place to surface how many devices
+  // that's currently true for, fleet-wide.
+  const warrantyUnderReviewCount = devices.filter(
+    (d) => computeWarrantyState({ device: d, events, entitlementStatus: entitlement?.status }) === "UnderReview"
   ).length;
 
   // One real row per parsed field change, across every device's real event - the same shape
@@ -96,7 +98,7 @@ export default function HardwareIntegrity() {
         <StatCard icon={ShieldAlert} tone={changeEvents.length > 0 ? "amber" : "green"} value={rows.length} label="Changes Detected" meta="field-level, in current window" live />
         <StatCard icon={Users} tone={affectedDeviceCount > 0 ? "amber" : "green"} value={affectedDeviceCount} label="Devices Affected" live />
         <StatCard icon={RotateCcw} tone="blue" value={resetEvents.length} label="Baseline Resets" live />
-        <StatCard icon={ShieldX} tone={warrantyWarningCount > 0 ? "amber" : "green"} value={warrantyWarningCount} label="Warranty Warning" meta="PRD §6.4 state" live />
+        <StatCard icon={ShieldX} tone={warrantyUnderReviewCount > 0 ? "blue" : "green"} value={warrantyUnderReviewCount} label="Warranty Under Review" meta="PRD §6.4 state" live />
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>

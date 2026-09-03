@@ -50,6 +50,10 @@ export const api = {
 
   revokeDevice: (token, deviceId) => request(`/v1/devices/${deviceId}/revoke`, { method: "POST", token }),
   resetFingerprint: (token, deviceId) => request(`/v1/devices/${deviceId}/reset-fingerprint`, { method: "POST", token }),
+  // PRD §6.4 Warranty State Machine - the real, human-confirmed adjudication step UnderReview/
+  // Voided require (see backend/warranty.go's own comment). decision is "confirm-voided" or
+  // "dismiss" (the latter reuses resetFingerprint's own real effect server-side).
+  warrantyReview: (token, deviceId, decision) => request(`/v1/devices/${deviceId}/warranty-review`, { method: "POST", token, body: { decision } }),
   setDeviceTags: (token, deviceId, tags) => request(`/v1/devices/${deviceId}/tags`, { method: "POST", token, body: { tags } }),
   // PRD §9 Self-Healing v1 remote dispatch - real, but v1 allows only one pending command per
   // device at a time (backend 409s if one's already pending, see device_commands.go).
