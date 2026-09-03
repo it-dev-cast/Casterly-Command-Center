@@ -245,7 +245,10 @@ export default function RemoteSessionViewer({ sessionId, onClose, hostname, mode
         setRemotePaused,
       );
     };
-    await acquireMicAndAddTrack(pc);
+    // Chat Only has no mic/screen prompt, matching ScreenSharePOC.tsx's own mode !== "chat"
+    // check on the customer side - an operator joining a chat-only session shouldn't hit an
+    // unexpected microphone permission prompt the UI never promised for this mode.
+    if (mode !== "chat") await acquireMicAndAddTrack(pc);
 
     try {
       await pc.setRemoteDescription(new RTCSessionDescription(offerSdp));
