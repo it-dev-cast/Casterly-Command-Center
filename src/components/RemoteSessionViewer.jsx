@@ -13,6 +13,24 @@ function toWsUrl(httpUrl) {
   return httpUrl.replace(/^http/, "ws");
 }
 
+// Real signal for "this session genuinely ended" vs "can't reach the backend right now" -
+// a raw WebSocket's onerror/onclose expose no HTTP status on a failed handshake (a real browser
+// API limitation), so a dropped connection here calls this plain HTTP existence check instead
+// (backend/remote_session.go's handleRemoteSessionExists) to pick the right error copy. true/
+// false are both confident answers; null means the check itself couldn't reach the backend -
+// kept as the same generic "unreachable" message as before, since a network problem reaching
+// the backend says nothing about whether the session itself is still there.
+async function checkSessionExists(sessionId) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/v1/remote-sessions/${sessionId}`);
+    if (res.status === 404) return false;
+    if (res.ok) return true;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function waitForIceGatheringComplete(pc, timeoutMs = 8000) {
   if (pc.iceGatheringState === "complete") return Promise.resolve();
   return new Promise((resolve) => {
@@ -267,14 +285,31 @@ export default function RemoteSessionViewer({ sessionId, onClose, hostname, mode
   }
 
   useEffect(() => {
+    let closedIntentionally = false;
     const ws = new WebSocket(`${toWsUrl(BACKEND_URL)}/v1/remote-sessions/${sessionId}/ws`);
     wsRef.current = ws;
     setSignaling("connecting");
     ws.onopen = () => setSignaling("open");
-    ws.onclose = () => setSignaling("closed");
-    ws.onerror = () => {
+    // Real distinction (not guessed) - checkSessionExists tells "this session genuinely ended"
+    // apart from "can't reach the backend right now," which a raw WebSocket close/error alone
+    // can't (no reconnect added here on purpose - an operator can just click Join again from
+    // the queue, unlike the customer side's own dedicated reconnect).
+    ws.onclose = () => {
       setSignaling("closed");
-      setError("Failed to connect to the signaling server for this session (backend unreachable, or the session has expired).");
+      if (closedIntentionally) return;
+      checkSessionExists(sessionId).then((exists) => {
+        if (closedIntentionally) return;
+        setError(
+          exists === false
+            ? "This session has ended - the endpoint's join window closed. Ask them to start a new Remote Assist request."
+            : "Failed to connect to the signaling server for this session (backend unreachable).",
+        );
+      });
+    };
+    ws.onerror = () => {
+      // onclose always follows onerror for a WebSocket (per spec) - the real handling above
+      // isn't duplicated here.
+      setSignaling("closed");
     };
     ws.onmessage = (event) => {
       setError(null);
@@ -288,6 +323,7 @@ export default function RemoteSessionViewer({ sessionId, onClose, hostname, mode
     };
 
     return () => {
+      closedIntentionally = true;
       if (connectTimerRef.current != null) window.clearTimeout(connectTimerRef.current);
       pcRef.current?.close();
       wsRef.current?.close();
