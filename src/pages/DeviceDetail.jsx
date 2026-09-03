@@ -82,15 +82,16 @@ function timeAgo(iso) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-// Display order/labels for the five real dimensions computeDeviceHealthScore actually scores -
+// Display order/labels for the six real dimensions computeDeviceHealthScore actually scores -
 // weights read straight from HEALTH_SCORE_WEIGHTS (deviceHealthScore.js) rather than repeated
 // here as separate numbers that could drift out of sync with the real formula.
 const HEALTH_SCORE_DIMENSIONS = [
   { key: "hardwareIntegrity", label: "Hardware Integrity" },
   { key: "storageWear", label: "Storage Wear" },
   { key: "battery", label: "Battery" },
-  { key: "security", label: "Security" },
   { key: "osSoftwareHealth", label: "OS & Software Health" },
+  { key: "thermal", label: "Thermal Performance" },
+  { key: "security", label: "Security" },
 ];
 
 // PRD §9 Self-Healing v1 remote dispatch - matches backend/device_commands.go's
@@ -330,7 +331,7 @@ export default function DeviceDetail() {
   // Composite Device Health Score - real math over the same real batteryHealthPct/ssdWearPct
   // this page already displays elsewhere, plus device/events for the hardware-integrity
   // dimension (see deviceHealthScore.js's own comment on why that one's event-derived). Not
-  // computed at all while offline - four of these five dimensions are last-known live readings
+  // computed at all while offline - five of these six dimensions are last-known live readings
   // (hardwareIntegrity is the one derived from device/events, not liveStatus), and a composite
   // built from them would look exactly as current as a genuinely live score, the one thing this
   // number must never do (same reasoning the Health badge above already applies via
@@ -341,10 +342,11 @@ export default function DeviceDetail() {
         device, events, batteryHealthPct, storageWearPct: ssdWearPct, securityHealthPct: detail.securityHealthPct,
         windowsUpdatePendingCount: detail.windowsUpdatePendingCount ?? null,
         windowsUpdateCheckedAt: detail.windowsUpdateCheckedAt ?? null,
+        cpuTempC: detail.cpuTempC ?? null, gpuTempC: detail.gpuTempC ?? null,
       });
   // Same offline gate as healthScore above - a frozen temperature reading from an offline
-  // device is exactly the same "looks current, isn't" problem, even with its own "(real, not
-  // yet scored)" label.
+  // device is exactly the same "looks current, isn't" problem, even for this supplementary
+  // raw-value display rather than the composite itself.
   const thermal = deviceIsOffline ? { available: false, cpuTempC: null, gpuTempC: null } : getThermalInfo(liveStatus);
   // Unlike healthScore above, not gated on deviceIsOffline - PRD §6.4 Warranty state is a derived
   // fact from baseline-lock + past events + entitlement standing, not a live sensor reading that
@@ -464,10 +466,10 @@ export default function DeviceDetail() {
               <div>
                 <h3 className="section-title">Device Health Score</h3>
                 <p className="section-sub">
-                  Real composite across 5 of the PRD's 6 dimensions{" "}
+                  Real composite across all 6 of the PRD's dimensions{" "}
                   <Info
                     size={12} color="var(--text-faint)" style={{ cursor: "help", verticalAlign: -2 }}
-                    title="Hardware Integrity 33.3%, Storage Wear 22.2%, Battery 16.7%, Security 11.1%, OS & Software Health 16.7% - real weights, renormalized per device over whichever of these are actually available for it. Thermal is a real signal collected today but not folded into this weighting - shown separately below, not silently missing."
+                    title="Hardware Integrity 30%, Storage Wear 20%, Battery 15%, OS & Software Health 15%, Thermal Performance 10%, Security 10% - real weights, renormalized per device over whichever of these are actually available for it."
                   />
                 </p>
               </div>
@@ -492,7 +494,7 @@ export default function DeviceDetail() {
               })}
             </div>
             <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border-soft)", fontSize: 12.5, color: "var(--text-faint)" }}>
-              Thermal (real, not yet scored): {thermal.available
+              Thermal detail (folded into Thermal Performance above): {thermal.available
                 ? [thermal.cpuTempC != null ? `CPU ${Math.round(thermal.cpuTempC)}°C` : null, thermal.gpuTempC != null ? `GPU ${Math.round(thermal.gpuTempC)}°C` : null].filter(Boolean).join(" · ")
                 : "not available on this device"}
             </div>

@@ -9,28 +9,30 @@ import { getLiveDetail } from "./liveDetail.js";
 // device is honestly reported as unavailable and excluded from that device's own score, rather
 // than defaulted to a guessed number.
 //
-// One PRD dimension is still deliberately NOT here:
-//   - Thermal Performance (10%): cpuTempC/gpuTempC are real when LibreHardwareMonitor happens to
-//     be installed and running on that specific machine, but that's a per-machine opt-in
-//     dependency, not a guaranteed first-party collector - coverage would be fleet-inconsistent
-//     in a way the other five dimensions aren't. Surfaced as its own separate, unscored info
-//     line (getThermalInfo below) instead of silently missing from - or unevenly weighted into -
-//     a "composite" score.
-//
 // OS & Software Health (15%) folded in now that windowsUpdatePendingCount/windowsUpdateCheckedAt
 // are confirmed real and flowing (extractLiveStatusFields in telemetry-server.mjs, shown on
 // Device 360) - see scoreOsSoftwareHealth below for the real formula.
 //
-// Weights sum to 100 across the five included dimensions (renormalized from the PRD's full
-// six-dimension model: 30/20/15/10/15 -> 33.3/22.2/16.7/11.1/16.7, keeping Hardware Integrity :
-// Storage Wear : Battery : Security : OS & Software Health in the same 30:20:15:10:15 ratio the
-// PRD specifies).
+// Thermal Performance (10%) folded in now too, using the same cpuTempC/gpuTempC LibreHardwareMonitor
+// signal Device 360's own raw temp tiles already display - see scoreThermalPerformance below for
+// the real formula. Per-machine coverage is still real and fleet-inconsistent (LibreHardwareMonitor
+// is a per-machine opt-in dependency, not a guaranteed first-party collector), but that's exactly
+// what per-device renormalization below already exists to handle - the same "not applicable, not
+// zero" treatment every other optional dimension here already gets, not a reason to keep it out.
+//
+// All six of the PRD's real dimensions are included now, at the PRD's own original ratio -
+// Hardware Integrity 30 : Storage Wear 20 : Battery 15 : OS & Software Health 15 : Thermal
+// Performance 10 : Security 10 - which already sums to 100, so no renormalization is needed here
+// at the constant level (unlike the earlier 5-dimension version, which had to renormalize Thermal's
+// share away). Per-device renormalization in computeDeviceHealthScore below is unchanged - it
+// still activates whenever any dimension (thermal included) is unavailable for a specific device.
 export const HEALTH_SCORE_WEIGHTS = {
-  hardwareIntegrity: 33.3,
-  storageWear: 22.2,
-  battery: 16.7,
-  security: 11.1,
-  osSoftwareHealth: 16.7,
+  hardwareIntegrity: 30,
+  storageWear: 20,
+  battery: 15,
+  osSoftwareHealth: 15,
+  thermal: 10,
+  security: 10,
 };
 
 function clamp(n, min, max) {
@@ -117,15 +119,44 @@ export function scoreOsSoftwareHealth(windowsUpdatePendingCount, windowsUpdateCh
   };
 }
 
-// computeDeviceHealthScore renormalizes weights per device over whichever of the five dimensions
+// Real, linear decay from a real "starts being bad" reference point - 85C is the same threshold
+// DeviceDetail.jsx's own deviceAlerts() and CPU Temp StatCard already flag as a real problem
+// elsewhere in this codebase, not a new number invented for this formula. 100 at <=70C (a normal,
+// unremarkable operating temperature for either a CPU or GPU under real load), floor of 20 at
+// >=95C (thermal-throttling territory, not yet 0 - a device this hot is still real and running,
+// not the worst possible state this scale can express). The existing 85C reference point falls at
+// score ~52 under this line (100 - (85-70)/(95-70)*80 = 52) - just inside amber, consistent with
+// 85C already being treated as "starts being bad" elsewhere, not a coincidence worth hard-coding
+// as a second breakpoint.
+const THERMAL_GOOD_MAX_C = 70;
+const THERMAL_CRITICAL_MIN_C = 95;
+const THERMAL_SCORE_FLOOR = 20;
+
+// Worse of cpuTempC/gpuTempC, not an average - a single real overheating component is a real
+// thermal problem for the device even while the other one reads fine, and averaging it against a
+// cool reading would dilute a signal this formula exists specifically to catch. Either alone is
+// used as-is when only one sensor is real for this device (most laptops have no discrete GPU
+// sensor at all) - available is false only when neither reading exists.
+export function scoreThermalPerformance(cpuTempC, gpuTempC) {
+  const temps = [cpuTempC, gpuTempC].filter((t) => t != null);
+  if (temps.length === 0) return { score: null, available: false };
+  const worst = Math.max(...temps);
+  if (worst <= THERMAL_GOOD_MAX_C) return { score: 100, available: true };
+  if (worst >= THERMAL_CRITICAL_MIN_C) return { score: THERMAL_SCORE_FLOOR, available: true };
+  const fractionToFloor = (worst - THERMAL_GOOD_MAX_C) / (THERMAL_CRITICAL_MIN_C - THERMAL_GOOD_MAX_C);
+  const score = Math.round(100 - fractionToFloor * (100 - THERMAL_SCORE_FLOOR));
+  return { score: clamp(score, THERMAL_SCORE_FLOOR, 100), available: true };
+}
+
+// computeDeviceHealthScore renormalizes weights per device over whichever of the six dimensions
 // are actually available for it - a desktop with no battery isn't penalized for a dimension that
 // genuinely doesn't apply to it, the same "not applicable, not zero" principle every dimension
-// formula above already follows individually. overall is null only when ALL FIVE dimensions are
+// formula above already follows individually. overall is null only when ALL SIX dimensions are
 // unavailable for this device - an honest "not enough real data yet" rather than a fabricated
 // default score.
 export function computeDeviceHealthScore({
   device, events, batteryHealthPct, storageWearPct, securityHealthPct,
-  windowsUpdatePendingCount, windowsUpdateCheckedAt,
+  windowsUpdatePendingCount, windowsUpdateCheckedAt, cpuTempC, gpuTempC,
 }) {
   const dimensions = {
     hardwareIntegrity: scoreHardwareIntegrity(device, events),
@@ -133,6 +164,7 @@ export function computeDeviceHealthScore({
     battery: scoreBattery(batteryHealthPct),
     security: scoreSecurity(securityHealthPct),
     osSoftwareHealth: scoreOsSoftwareHealth(windowsUpdatePendingCount, windowsUpdateCheckedAt),
+    thermal: scoreThermalPerformance(cpuTempC, gpuTempC),
   };
 
   let weightedSum = 0;
@@ -161,10 +193,11 @@ export function healthScoreTone(score) {
   return "red";
 }
 
-// Thermal is deliberately NOT part of computeDeviceHealthScore above (see this file's own
-// top-of-file comment on why) - this is the separate, unscored real signal for an info-only
-// display. available reflects whether LibreHardwareMonitor (or HWiNFO) happened to be reachable
-// on this specific device this cycle, not a fleet-wide fact.
+// Thermal now feeds computeDeviceHealthScore above via scoreThermalPerformance - this stays as
+// the separate raw-value helper for Device 360's own supplementary temperature line, the same
+// way batteryHealthPct/securityHealthPct also still get their own raw StatCard display alongside
+// feeding the composite. available reflects whether LibreHardwareMonitor (or HWiNFO) happened to
+// be reachable on this specific device this cycle, not a fleet-wide fact.
 export function getThermalInfo(liveStatus) {
   const detail = getLiveDetail(liveStatus);
   const cpuTempC = detail.cpuTempC ?? null;

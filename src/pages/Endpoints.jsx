@@ -175,6 +175,8 @@ export default function Endpoints() {
             securityHealthPct: liveStatus?.detail?.securityHealthPct ?? null,
             windowsUpdatePendingCount: liveStatus?.detail?.windowsUpdatePendingCount ?? null,
             windowsUpdateCheckedAt: liveStatus?.detail?.windowsUpdateCheckedAt ?? null,
+            cpuTempC: liveStatus?.detail?.cpuTempC ?? null,
+            gpuTempC: liveStatus?.detail?.gpuTempC ?? null,
           })
         : { overall: null, dimensions: {} },
       // Unlike healthScore above, not gated on online/offline - this is a derived fact from

@@ -221,6 +221,8 @@ export default function Dashboard() {
             securityHealthPct: status_?.detail?.securityHealthPct ?? null,
             windowsUpdatePendingCount: status_?.detail?.windowsUpdatePendingCount ?? null,
             windowsUpdateCheckedAt: status_?.detail?.windowsUpdateCheckedAt ?? null,
+            cpuTempC: status_?.detail?.cpuTempC ?? null,
+            gpuTempC: status_?.detail?.gpuTempC ?? null,
           })
         : { overall: null, dimensions: {} },
     };
