@@ -101,6 +101,8 @@ const REMEDIATION_ACTIONS = [
   { id: "clean-temp", label: "Clean Temp Files" },
   { id: "restart-service", label: "Restart Print Spooler" },
   { id: "clear-teams-cache", label: "Clear Teams Cache" },
+  { id: "repair-vpn", label: "Repair VPN Connection" },
+  { id: "collect-bsod-diagnostics", label: "Collect BSOD Diagnostics" },
 ];
 
 const TABS = [
