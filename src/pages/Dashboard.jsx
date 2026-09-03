@@ -256,10 +256,20 @@ export default function Dashboard() {
       : needsAttention.length > 1
         ? `${needsAttention.length} devices need attention`
         : "Fleet is healthy";
-  // stale sorts after real warning/critical (an unconfirmed old reading is worth surfacing, but
-  // below devices actively reporting a real current problem) and above unknown/healthy.
-  const HEALTH_ORDER = { critical: 0, warning: 1, stale: 2, unknown: 3, healthy: 4 };
-  const fleetCards = [...withHealth].sort((a, b) => (HEALTH_ORDER[a.health] ?? 9) - (HEALTH_ORDER[b.health] ?? 9));
+  // Reporting devices always sort above not-reporting ones - a stale device previously could
+  // outrank warning/critical under health-severity order alone, but never a live, healthy one
+  // (the old HEALTH_ORDER put stale at 2, healthy at 4 - an offline laptop could show above a
+  // perfectly healthy live one, which is exactly backwards for a fleet-at-a-glance view). Within
+  // either group, most-recently-seen sorts first - for the not-reporting group specifically, that
+  // means the device that just went stale sorts above one that's been offline for days.
+  const fleetCards = [...withHealth].sort((a, b) => {
+    const aStale = a.health === "stale";
+    const bStale = b.health === "stale";
+    if (aStale !== bStale) return aStale ? 1 : -1;
+    const aSeen = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : -Infinity;
+    const bSeen = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : -Infinity;
+    return bSeen - aSeen;
+  });
   const DASH_CARD_LIMIT = 8;
   const shownCards = fleetCards.slice(0, DASH_CARD_LIMIT);
   const hiddenCards = fleetCards.length - shownCards.length;

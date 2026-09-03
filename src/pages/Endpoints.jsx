@@ -197,7 +197,21 @@ export default function Endpoints() {
       const matchesConnection = connectionFilter === "all" || d.connection === connectionFilter;
       return matchesQuery && matchesHealth && matchesConnection;
     });
-    if (!sort.key) return rows;
+    // Default order (no column explicitly clicked) matches Dashboard's own fleet-card order:
+    // reporting devices first, most-recently-seen first; not-reporting devices sort to the
+    // bottom, least-stale (just went offline) first. Without this, rows fell back to raw
+    // enrollment order - a device that's been offline for weeks could sit above one actively
+    // reporting right now. Clicking any column header still overrides this with an explicit sort.
+    if (!sort.key) {
+      return [...rows].sort((a, b) => {
+        const aStale = a.health === "stale";
+        const bStale = b.health === "stale";
+        if (aStale !== bStale) return aStale ? 1 : -1;
+        const aSeen = a.lastSeenAt ? new Date(a.lastSeenAt).getTime() : -Infinity;
+        const bSeen = b.lastSeenAt ? new Date(b.lastSeenAt).getTime() : -Infinity;
+        return bSeen - aSeen;
+      });
+    }
     const sorted = [...rows].sort((a, b) => {
       if (sort.key === "health") return (HEALTH_RANK[a.health] - HEALTH_RANK[b.health]) * sort.dir;
       if (sort.key === "score") return ((a.healthScore.overall ?? -1) - (b.healthScore.overall ?? -1)) * sort.dir;
