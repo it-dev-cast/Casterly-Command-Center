@@ -7,6 +7,7 @@ import { createPersistedStore } from "./persistedStore.js";
 //   approval-requested-{action} / approval-approved-{action} / approval-rejected-{action}
 //   device-revoked
 //   hardware-tamper-detected / hardware-fingerprint-reset
+//   duplicate-fingerprint-detected / duplicate-fingerprint-auto-revoked
 //   remote-assist-requested
 //   incident-created / incident-status-changed
 //   alert-rule-triggered / alert-rule-cleared
@@ -17,7 +18,7 @@ import { createPersistedStore } from "./persistedStore.js";
 // enum this backend defines, so they fall into the honest "Other Device Activity" catch-all
 // below rather than being individually enumerated (which would mean guessing at an unbounded set).
 export const NOTIFICATION_CATEGORIES = [
-  { key: "hardware", label: "Hardware & Tamper", match: (t) => t === "hardware-tamper-detected" || t === "hardware-fingerprint-reset" },
+  { key: "hardware", label: "Hardware & Tamper", match: (t) => t === "hardware-tamper-detected" || t === "hardware-fingerprint-reset" || t === "duplicate-fingerprint-detected" || t === "duplicate-fingerprint-auto-revoked" },
   { key: "liveness", label: "Device Liveness", match: (t) => t === "device-offline" || t === "device-online" || t === "device-revoked" },
   { key: "incidents", label: "Incidents", match: (t) => t === "incident-created" || t === "incident-status-changed" },
   { key: "approvals", label: "Approvals", match: (t) => t.startsWith("approval-requested-") || t.startsWith("approval-approved-") || t.startsWith("approval-rejected-") },
