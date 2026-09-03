@@ -8,6 +8,7 @@ import { api } from "../lib/api.js";
 import { predictDeviceHealth } from "../lib/prediction.js";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import { useRefetchOnEvent, isApprovalEvent } from "../hooks/useRefetchOnEvent.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 
 const STATUS_TONE = { Active: "green", Expiring: "amber", Grace: "amber", Expired: "red", Suspended: "red" };
 const RISK_TONE = { Low: "green", Medium: "amber", High: "red" };
@@ -151,7 +152,7 @@ export default function Lifecycle() {
         <StatCard icon={CheckCircle2} tone="green" value={approvedCount} label="Approved" meta="ADE requests" />
         <StatCard icon={XCircle} tone="red" value={rejectedCount} label="Rejected" meta="ADE requests" />
         <StatCard icon={ListChecks} tone="teal" value={featuresIncluded} label="Features Included" meta={entitlement ? `of ${entitlement.features.length} on this plan` : undefined} />
-        <StatCard icon={ShieldQuestion} tone={selectedDevice?.fingerprintLockedAt ? "green" : "amber"} value={selectedDevice?.fingerprintLockedAt ? "Locked" : "Pending"} label="Hardware Baseline" meta={selectedDevice?.hostname} />
+        <StatCard icon={ShieldQuestion} tone={selectedDevice?.fingerprintLockedAt ? "green" : "amber"} value={selectedDevice?.fingerprintLockedAt ? "Locked" : "Pending"} label="Hardware Baseline" meta={selectedDevice ? `${selectedDevice.hostname} ${shortDeviceTag(selectedDevice.id)}` : undefined} />
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
@@ -194,7 +195,8 @@ export default function Lifecycle() {
               {!fleetLoading && fleetPredictions.map(({ device, prediction }) => (
                 <tr key={device.id} onClick={() => setSelectedDeviceId(device.id)} style={{ cursor: "pointer", background: device.id === selectedDeviceId ? "var(--bg-panel-2)" : undefined }}>
                   <td>
-                    <Link to={`/endpoints/${device.id}`} onClick={(e) => e.stopPropagation()} style={{ color: "var(--accent)", fontWeight: 600 }}>{device.hostname}</Link>
+                    <Link to={`/endpoints/${device.id}`} onClick={(e) => e.stopPropagation()} style={{ color: "var(--accent)", fontWeight: 600 }}>{device.hostname}</Link>{" "}
+                    <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(device.id)}</span>
                   </td>
                   <td>
                     <span className={`badge ${device.fingerprintLockedAt ? "green" : "amber"}`}>

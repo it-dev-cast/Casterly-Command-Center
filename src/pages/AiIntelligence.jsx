@@ -5,6 +5,7 @@ import StatCard from "../components/StatCard.jsx";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import { api } from "../lib/api.js";
 import { predictDeviceHealth } from "../lib/prediction.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 
 const RISK_TONE = { Low: "green", Medium: "amber", High: "red" };
 
@@ -118,7 +119,7 @@ export default function AiIntelligence() {
             <tbody>
               {!loading && predictions.map(({ device, prediction, lastSnapshotAt }) => (
                 <tr key={device.id}>
-                  <td><Link to={`/endpoints/${device.id}`} style={{ color: "var(--accent)" }}>{device.hostname}</Link></td>
+                  <td><Link to={`/endpoints/${device.id}`} style={{ color: "var(--accent)" }}>{device.hostname}</Link> <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(device.id)}</span></td>
                   <td><PredictionCell p={prediction.battery} /></td>
                   <td><PredictionCell p={prediction.ssd} /></td>
                   <td className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{timeAgo(lastSnapshotAt)}</td>

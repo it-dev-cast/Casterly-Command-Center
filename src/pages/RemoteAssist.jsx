@@ -8,6 +8,7 @@ import StatCard from "../components/StatCard.jsx";
 import RemoteSessionViewer from "../components/RemoteSessionViewer.jsx";
 import { useLiveData, healthFromLiveStatus } from "../context/LiveDataContext.jsx";
 import { api } from "../lib/api.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 
 const MODE_ICON = { screen: Monitor, voice: Mic, chat: MessageSquare };
 const MODE_TEXT = { screen: "Screen Share", voice: "Voice + Chat", chat: "Chat Only" };
@@ -150,7 +151,7 @@ export default function RemoteAssist() {
           <PhoneCall size={16} />
           <span>
             {waiting.length === 1
-              ? `${waiting[0].hostname || hostnameById[waiting[0].deviceId] || "An endpoint"} is waiting — ${MODE_TEXT[waiting[0].mode] || "Screen Share"}`
+              ? `${waiting[0].hostname || hostnameById[waiting[0].deviceId] || "An endpoint"} ${shortDeviceTag(waiting[0].deviceId)} is waiting — ${MODE_TEXT[waiting[0].mode] || "Screen Share"}`
               : `${waiting.length} endpoints waiting for an operator`}
           </span>
           <span className="remote-wait-go">Join →</span>
@@ -170,7 +171,11 @@ export default function RemoteAssist() {
         <RemoteSessionViewer
           key={joinedSessionId}
           sessionId={joinedSessionId}
-          hostname={joinedSession?.hostname || hostnameById[joinedSession?.deviceId] || joinedSession?.deviceId || "Endpoint"}
+          hostname={
+            joinedSession?.hostname || hostnameById[joinedSession?.deviceId]
+              ? `${joinedSession?.hostname || hostnameById[joinedSession?.deviceId]} ${shortDeviceTag(joinedSession?.deviceId)}`
+              : joinedSession?.deviceId || "Endpoint"
+          }
           mode={joinedSession?.mode || "screen"}
           deviceId={joinedSession?.deviceId}
           stillInQueue={!!joinedSession}

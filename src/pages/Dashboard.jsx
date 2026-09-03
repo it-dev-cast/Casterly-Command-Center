@@ -13,6 +13,7 @@ import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import { computeDeviceHealthScore, healthScoreTone } from "../lib/deviceHealthScore.js";
 import { latestBatteryHealthPct, latestSsdWearPct, batteryHealthColor } from "../lib/batteryHealth.js";
 import { liveBatteryHealthPct, liveSsdWearPct, formatEventLine } from "../lib/liveDetail.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 import { OPEN_STATUSES } from "./Incidents.jsx";
 
 function timeAgo(iso) {
@@ -124,7 +125,9 @@ function DeviceFocus({ d, recent, batteryHealthPct }) {
     >
       <div className="sys-card-top">
         <div className="sys-card-id">
-          <div className="sys-card-name truncate">{d.hostname}</div>
+          <div className="sys-card-name truncate">
+            {d.hostname} <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>{shortDeviceTag(d.id)}</span>
+          </div>
           <div className="sys-card-meta truncate">
             {[model, timeAgo(d.lastSeenAt)].filter(Boolean).join(" · ")}
           </div>
@@ -302,8 +305,8 @@ export default function Dashboard() {
         {worst && (
           <p className="dash-why">
             {needsAttention.length > 1
-              ? `${needsAttention.length} of ${deviceCount} · ${worst.hostname}${attentionWhy ? ` · ${attentionWhy}` : ""}`
-              : `${worst.hostname}${attentionWhy ? ` · ${attentionWhy}` : ""}`}
+              ? `${needsAttention.length} of ${deviceCount} · ${worst.hostname} ${shortDeviceTag(worst.id)}${attentionWhy ? ` · ${attentionWhy}` : ""}`
+              : `${worst.hostname} ${shortDeviceTag(worst.id)}${attentionWhy ? ` · ${attentionWhy}` : ""}`}
           </p>
         )}
         <p className="dash-sub-meta">
@@ -349,7 +352,7 @@ export default function Dashboard() {
           <PhoneCall size={16} />
           <span>
             {waitingRemote.length === 1
-              ? `${waitingRemote[0].hostname || "An endpoint"} requested ${waitingRemote[0].mode === "chat" ? "text chat" : waitingRemote[0].mode === "voice" ? "voice" : "screen share"}`
+              ? `${waitingRemote[0].hostname || "An endpoint"} ${shortDeviceTag(waitingRemote[0].deviceId)} requested ${waitingRemote[0].mode === "chat" ? "text chat" : waitingRemote[0].mode === "voice" ? "voice" : "screen share"}`
               : `${waitingRemote.length} remote assist requests waiting`}
           </span>
           <span className="remote-wait-go">Join →</span>

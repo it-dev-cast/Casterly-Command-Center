@@ -5,6 +5,7 @@ import StatCard from "../components/StatCard.jsx";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import { useRefetchOnEvent, isIncidentEvent } from "../hooks/useRefetchOnEvent.js";
 import { api } from "../lib/api.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 
 function timeAgo(iso) {
   if (!iso) return "—";
@@ -155,7 +156,7 @@ export default function Incidents() {
             </select>
             <select className="pill-select" value={deviceFilter} onChange={(e) => updateDeviceFilter(e.target.value)}>
               <option value="all">All Devices</option>
-              {devicesWithIncidents.map((d) => <option key={d.id} value={d.id}>{d.hostname}</option>)}
+              {devicesWithIncidents.map((d) => <option key={d.id} value={d.id}>{d.hostname} {shortDeviceTag(d.id)}</option>)}
             </select>
           </div>
         </div>

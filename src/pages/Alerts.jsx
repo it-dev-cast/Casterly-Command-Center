@@ -6,6 +6,7 @@ import EventDetailPanel from "../components/EventDetailPanel.jsx";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import { useDialog } from "../context/DialogContext.jsx";
 import { api } from "../lib/api.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 
 function timeAgo(iso) {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -63,7 +64,8 @@ export default function Alerts() {
   // filter dropdown never offers a device with nothing to show for it.
   const devicesWithAlerts = devices.filter((d) => alerts.some((e) => e.deviceId === d.id));
   function hostnameFor(deviceId) {
-    return devices.find((d) => d.id === deviceId)?.hostname || deviceId;
+    const d = devices.find((d) => d.id === deviceId);
+    return d ? `${d.hostname} ${shortDeviceTag(d.id)}` : deviceId;
   }
 
   // Real grouping, not a fabricated category - same rows, just partitioned by the real deviceId
@@ -146,7 +148,7 @@ export default function Alerts() {
             ))}
             <select className="pill-select" value={deviceFilter} onChange={(e) => updateDeviceFilter(e.target.value)}>
               <option value="all">All Devices</option>
-              {devicesWithAlerts.map((d) => <option key={d.id} value={d.id}>{d.hostname}</option>)}
+              {devicesWithAlerts.map((d) => <option key={d.id} value={d.id}>{d.hostname} {shortDeviceTag(d.id)}</option>)}
             </select>
             <button
               className={`pill-select ${groupByDevice ? "active" : ""}`}

@@ -10,6 +10,7 @@ import { computeWarrantyState, warrantyStateTone } from "../lib/warrantyState.js
 import { api } from "../lib/api.js";
 import { latestBatteryHealthPct, latestSsdWearPct, batteryHealthColor } from "../lib/batteryHealth.js";
 import { getLiveDetail, liveBatteryHealthPct, liveSsdWearPct } from "../lib/liveDetail.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 
 function timeAgo(iso) {
   if (!iso) return "Not available";
@@ -434,7 +435,10 @@ export default function Endpoints() {
                     </td>
                   )}
                   <td style={{ maxWidth: 260 }}>
-                    <Link to={`/endpoints/${d.id}`} className="truncate" style={{ color: "var(--accent)", fontWeight: 600, display: "block" }} title={d.hostname}>{d.hostname}</Link>
+                    <div className="truncate" title={`${d.hostname} ${shortDeviceTag(d.id)}`}>
+                      <Link to={`/endpoints/${d.id}`} style={{ color: "var(--accent)", fontWeight: 600 }}>{d.hostname}</Link>{" "}
+                      <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(d.id)}</span>
+                    </div>
                     <div className="truncate" style={{ fontSize: 11, color: "var(--text-dim)" }} title={getLiveDetail(d.liveStatus).model || d.id}>
                       {getLiveDetail(d.liveStatus).model || getLiveDetail(d.liveStatus).manufacturer || d.id}
                     </div>

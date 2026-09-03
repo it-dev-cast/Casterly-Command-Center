@@ -9,6 +9,7 @@ import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import StatCard from "../components/StatCard.jsx";
 import EventDetailPanel from "../components/EventDetailPanel.jsx";
 import { STATUS_LABELS, STATUS_TONE } from "./Incidents.jsx";
+import { shortDeviceTag } from "../lib/deviceId.js";
 
 function fmtTime(iso) {
   if (!iso) return "—";
@@ -186,7 +187,7 @@ export default function IncidentDetail() {
           <h3 className="section-title" style={{ marginBottom: 12 }}>Affected Device</h3>
           {device ? (
             <div style={{ fontSize: 13, lineHeight: 2 }}>
-              <div><span style={{ color: "var(--text-faint)" }}>Hostname: </span>{device.hostname}</div>
+              <div><span style={{ color: "var(--text-faint)" }}>Hostname: </span>{device.hostname} <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(device.id)}</span></div>
               <div><span style={{ color: "var(--text-faint)" }}>Status: </span><span className={`badge ${device.status === "active" ? "green" : "slate"}`}>{device.status}</span></div>
               <div><span style={{ color: "var(--text-faint)" }}>Health: </span><span className={`badge ${health === "healthy" ? "green" : health === "warning" ? "amber" : health === "critical" ? "red" : "gray"}`}>{health === "unknown" ? "no data" : health === "stale" ? "not reporting" : health}</span></div>
               <div><span style={{ color: "var(--text-faint)" }}>Connection: </span><span style={{ color: deviceIsOffline ? "var(--text-faint)" : connected ? "var(--green)" : "var(--amber)" }}>{deviceIsOffline ? "Offline" : connected ? "Live" : "Reconnecting"}</span></div>

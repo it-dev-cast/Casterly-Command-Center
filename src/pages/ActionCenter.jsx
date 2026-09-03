@@ -9,6 +9,7 @@ import { api } from "../lib/api.js";
 import { predictDeviceHealth } from "../lib/prediction.js";
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
 import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 import { STATUS_LABELS, STATUS_TONE, OPEN_STATUSES } from "./Incidents.jsx";
 
 // Small reusable category eyebrow, matching the same uppercase-label convention Sidebar.jsx's
@@ -254,7 +255,7 @@ export default function ActionCenter() {
             <tbody>
               {hardwareChangeRows.slice(0, 8).map((r) => (
                 <tr key={r.key} onClick={() => setSelectedEvent(r.event)} style={{ cursor: "pointer" }}>
-                  <td><Link to={`/endpoints/${r.event.deviceId}`} onClick={(e) => e.stopPropagation()} style={{ color: "var(--accent)" }}>{devices.find((d) => d.id === r.event.deviceId)?.hostname || r.event.deviceId}</Link></td>
+                  <td><Link to={`/endpoints/${r.event.deviceId}`} onClick={(e) => e.stopPropagation()} style={{ color: "var(--accent)" }}>{devices.find((d) => d.id === r.event.deviceId)?.hostname || r.event.deviceId}</Link> <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(r.event.deviceId)}</span></td>
                   <td style={{ fontWeight: 600 }}>{r.field}</td>
                   <td className="mono truncate" style={{ maxWidth: 260, fontSize: 12 }} title={`${r.baseline} → ${r.current}`}>
                     <span style={{ color: "var(--text-faint)" }}>{r.baseline || "—"}</span> → {r.current || "—"}
@@ -279,7 +280,7 @@ export default function ActionCenter() {
               <tbody>
                 {attentionDevices.map((d) => (
                   <tr key={d.id}>
-                    <td><Link to={`/endpoints/${d.id}`} style={{ color: "var(--accent)" }}>{d.hostname}</Link></td>
+                    <td><Link to={`/endpoints/${d.id}`} style={{ color: "var(--accent)" }}>{d.hostname}</Link> <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(d.id)}</span></td>
                     <td><span className={`badge ${d.health === "critical" ? "red" : "amber"}`}>{d.health}</span></td>
                   </tr>
                 ))}
@@ -300,7 +301,7 @@ export default function ActionCenter() {
                 {unreadNotifications.slice(0, 8).map((n) => (
                   <tr key={n.id}>
                     <td className="truncate" style={{ maxWidth: 220 }} title={n.message}>{n.eventType}</td>
-                    <td><Link to={`/endpoints/${n.deviceId}`} style={{ color: "var(--accent)" }} className="mono" >{devices.find((d) => d.id === n.deviceId)?.hostname || n.deviceId}</Link></td>
+                    <td><Link to={`/endpoints/${n.deviceId}`} style={{ color: "var(--accent)" }} className="mono" >{devices.find((d) => d.id === n.deviceId)?.hostname || n.deviceId}</Link> <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(n.deviceId)}</span></td>
                     <td className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{timeAgo(n.createdAt)}</td>
                   </tr>
                 ))}
@@ -324,7 +325,7 @@ export default function ActionCenter() {
             <tbody>
               {offlineDevices.map((d) => (
                 <tr key={d.id}>
-                  <td><Link to={`/endpoints/${d.id}`} style={{ color: "var(--accent)" }}>{d.hostname}</Link></td>
+                  <td><Link to={`/endpoints/${d.id}`} style={{ color: "var(--accent)" }}>{d.hostname}</Link> <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(d.id)}</span></td>
                   <td><span className="badge gray">Offline</span></td>
                 </tr>
               ))}
@@ -347,7 +348,7 @@ export default function ActionCenter() {
             <tbody>
               {!aiLoading && aiSignals.map((s, i) => (
                 <tr key={`${s.device.id}-${s.metric}-${i}`}>
-                  <td><Link to={`/endpoints/${s.device.id}`} style={{ color: "var(--accent)" }}>{s.device.hostname}</Link></td>
+                  <td><Link to={`/endpoints/${s.device.id}`} style={{ color: "var(--accent)" }}>{s.device.hostname}</Link> <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(s.device.id)}</span></td>
                   <td>{s.metric === "Battery Health" ? <TrendingDown size={13} style={{ marginRight: 5, verticalAlign: "middle" }} /> : <TrendingUp size={13} style={{ marginRight: 5, verticalAlign: "middle" }} />}{s.metric}</td>
                   <td className="mono">{s.daysRemaining}d</td>
                   <td><span className="badge red">{s.risk}</span></td>

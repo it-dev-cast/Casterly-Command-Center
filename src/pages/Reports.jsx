@@ -4,6 +4,7 @@ import { FileText, Monitor, ClipboardList, ShieldAlert, AlertTriangle, CheckCirc
 import StatCard from "../components/StatCard.jsx";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import { api } from "../lib/api.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 
 export default function Reports() {
   const { token, devices, events, offlineDevices } = useLiveData();
@@ -61,7 +62,7 @@ export default function Reports() {
               <tbody>
                 {offlineDevices.map((d) => (
                   <tr key={d.id}>
-                    <td><Link to={`/endpoints/${d.id}`} style={{ color: "var(--accent)" }}>{d.hostname}</Link></td>
+                    <td><Link to={`/endpoints/${d.id}`} style={{ color: "var(--accent)" }}>{d.hostname}</Link> <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(d.id)}</span></td>
                     <td><span className="badge gray">Offline</span></td>
                   </tr>
                 ))}

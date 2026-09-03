@@ -5,6 +5,7 @@ import {
   Waves, RefreshCw, ArrowRight, SunMoon, Sun, Moon, Monitor, Globe, History, Info,
 } from "lucide-react";
 import { BACKEND_URL, TENANT_ID, api } from "../lib/api.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import { useApiHealth } from "../hooks/useApiHealth.js";
 import { useTheme, THEME_REGISTRY } from "../hooks/useTheme.js";
@@ -586,7 +587,12 @@ export default function Settings() {
                       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                         <span className={`badge ${e.severity === "critical" ? "red" : e.severity === "warning" ? "amber" : "blue"}`} style={{ flexShrink: 0 }}>{e.severity}</span>
                         <span className="truncate" style={{ fontSize: 12.5, maxWidth: 260 }} title={e.message}>{e.message}</span>
-                        <span className="mono" style={{ fontSize: 11, color: "var(--text-faint)", flexShrink: 0 }}>{devices.find((d) => d.id === e.deviceId)?.hostname || e.deviceId}</span>
+                        <span className="mono" style={{ fontSize: 11, color: "var(--text-faint)", flexShrink: 0 }}>
+                          {(() => {
+                            const d = devices.find((d) => d.id === e.deviceId);
+                            return d ? `${d.hostname} ${shortDeviceTag(d.id)}` : e.deviceId;
+                          })()}
+                        </span>
                       </div>
                       <span className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)", flexShrink: 0 }}>{formatWithPrefs(e.createdAt, prefs)}</span>
                     </div>

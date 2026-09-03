@@ -6,6 +6,7 @@ import ApprovalsTable from "../components/ApprovalsTable.jsx";
 import { useLiveData } from "../context/LiveDataContext.jsx";
 import { useRefetchOnEvent, isApprovalEvent } from "../hooks/useRefetchOnEvent.js";
 import { api } from "../lib/api.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 
 // The full real ADE approval-request history, tenant-wide - api.listApprovalRequests already
 // returns every request regardless of status or device (confirmed against
@@ -116,7 +117,7 @@ export default function Approvals() {
             </select>
             <select className="pill-select" value={deviceFilter} onChange={(e) => updateDeviceFilter(e.target.value)}>
               <option value="all">All Devices</option>
-              {devicesWithApprovals.map((d) => <option key={d.id} value={d.id}>{d.hostname}</option>)}
+              {devicesWithApprovals.map((d) => <option key={d.id} value={d.id}>{d.hostname} {shortDeviceTag(d.id)}</option>)}
             </select>
           </div>
         </div>

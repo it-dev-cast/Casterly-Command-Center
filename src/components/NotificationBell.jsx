@@ -5,6 +5,7 @@ import { useLiveData, getSeverityTone } from "../context/LiveDataContext.jsx";
 import { useDialog } from "../context/DialogContext.jsx";
 import { notificationPrefsStore, categorizeEventType, isCategoryEnabled } from "../lib/notificationPrefs.js";
 import { formatEventLine, labelEventType } from "../lib/liveDetail.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 
 // Per-tone icon and actual paintable color for each severity tone getSeverityTone returns -
 // red/amber match the real --red/--amber tokens used everywhere else in this app. "blue"
@@ -56,7 +57,8 @@ export default function NotificationBell() {
   }, []);
 
   function hostnameFor(deviceId) {
-    return devices.find((d) => d.id === deviceId)?.hostname || deviceId;
+    const d = devices.find((d) => d.id === deviceId);
+    return d ? `${d.hostname} ${shortDeviceTag(d.id)}` : deviceId;
   }
 
   async function handleMarkAllRead() {

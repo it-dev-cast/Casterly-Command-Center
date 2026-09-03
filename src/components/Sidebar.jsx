@@ -8,6 +8,7 @@ import {
 import { useLiveData, healthFromLiveStatus } from "../context/LiveDataContext.jsx";
 import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import { api } from "../lib/api.js";
+import { shortDeviceTag } from "../lib/deviceId.js";
 import { CasterlyMark } from "./CasterlyLogo.jsx";
 
 // Grouped to match the Command Center's real operational flow, per the master UI/UX redesign
@@ -201,7 +202,7 @@ export default function Sidebar() {
             <>
               <div className="pulse-rail-ticks">
                 {pulseTicks.map((t) => (
-                  <span key={t.id} className={`pulse-tick ${t.health}`} title={`${t.hostname}: ${TICK_TITLE[t.health]}`} />
+                  <span key={t.id} className={`pulse-tick ${t.health}`} title={`${t.hostname} ${shortDeviceTag(t.id)}: ${TICK_TITLE[t.health]}`} />
                 ))}
               </div>
               <div className="pulse-rail-summary">
