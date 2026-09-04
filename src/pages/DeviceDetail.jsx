@@ -544,6 +544,12 @@ export default function DeviceDetail() {
                         : `${detail.windowsUpdatePendingCount} pending`
                   }
                 />
+                {/* Real last-boot timestamp (Win32_OperatingSystem.LastBootUpTime) - plain,
+                    neutral display, no color/severity treatment. There's no honest way to tell
+                    a concerning unexpected reboot from a routine one (nightly policy, an
+                    intentional restart, waking from sleep) using uptime alone, so this shows the
+                    fact and nothing more. */}
+                <Kv label="Last Reboot" value={detail.lastBootTime == null ? "—" : timeAgo(detail.lastBootTime)} />
                 {/* Real hourly BIOS/firmware check (runBiosFirmwareUpdateCheck) - same WUA
                     search cadence as Windows Update above, filtered to System Firmware driver
                     entries. Deliberately NOT folded into the composite score below (see PRD
