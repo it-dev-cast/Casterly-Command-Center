@@ -380,6 +380,20 @@ export default function DeviceDetail() {
   const prediction = predictDeviceHealth(snapshots);
   const batteryHealthPct = liveBatteryHealthPct(liveStatus, latestBatteryHealthPct(snapshots));
   const ssdWearPct = liveSsdWearPct(liveStatus, latestSsdWearPct(snapshots));
+  // Defender's own last-scan fact, shown as a single "Last Scan" row rather than two separate
+  // Quick/Full rows - Defender only ever runs Quick Scans automatically in practice (a blank
+  // Full Scan time is normal, not a gap), so whichever actually happened more recently is the
+  // one real fact worth surfacing; the other stays available in detail if ever needed.
+  const defenderQuickScanAt = detail.defenderQuickScanAt ?? null;
+  const defenderFullScanAt = detail.defenderFullScanAt ?? null;
+  const defenderLastScanAt =
+    defenderQuickScanAt == null
+      ? defenderFullScanAt
+      : defenderFullScanAt == null
+        ? defenderQuickScanAt
+        : new Date(defenderFullScanAt) > new Date(defenderQuickScanAt)
+          ? defenderFullScanAt
+          : defenderQuickScanAt;
   // Composite Device Health Score - real math over the same real batteryHealthPct/ssdWearPct
   // this page already displays elsewhere, plus device/events for the hardware-integrity
   // dimension (see deviceHealthScore.js's own comment on why that one's event-derived). Not
@@ -560,6 +574,30 @@ export default function DeviceDetail() {
                                   ? "Workplace-joined"
                                   : "Not joined"
                         }${detail.mdmEnrolled ? " · MDM-enrolled" : ""}`
+                  }
+                />
+                {/* Real Windows Defender status (MSFT_MpComputerStatus) + SecurityCenter2's
+                    registered-AV-product list (covers third-party AV too, not just Defender -
+                    a machine with Defender disabled in favor of e.g. Norton would show that
+                    product's real name here instead). Deliberately not decoding
+                    SecurityCenter2's own productState bitmask - undocumented, unofficial, and
+                    redundant with Defender's own clean booleans for the one product with a real
+                    first-party API. Not folded into securityHealthPct below - same "visible and
+                    honest first" scope as every other signal added tonight. */}
+                <Kv label="Real-Time Protection" value={onOff(detail.defenderRealTimeProtectionEnabled)} />
+                <Kv
+                  label="Virus Definitions"
+                  value={detail.defenderSignatureLastUpdated == null ? "—" : `Updated ${timeAgo(detail.defenderSignatureLastUpdated)}`}
+                />
+                <Kv label="Last Scan" value={defenderLastScanAt == null ? "—" : timeAgo(defenderLastScanAt)} />
+                <Kv
+                  label="AV Products"
+                  value={
+                    detail.avProductNames == null
+                      ? "—"
+                      : detail.avProductNames.length === 0
+                        ? "None registered"
+                        : detail.avProductNames.join(", ")
                   }
                 />
               </div>
