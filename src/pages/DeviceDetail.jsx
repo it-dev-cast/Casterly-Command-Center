@@ -860,6 +860,18 @@ export default function DeviceDetail() {
                 <Kv label="GPU" value={dash(detail.gpuName)} />
                 <Kv label="GPU util" value={dash(detail.gpuUtilPct, "%")} />
                 <Kv label="GPU temp" value={detail.gpuTempC != null ? `${Math.round(detail.gpuTempC)}°C` : "—"} />
+                {/* Real GPU driver version + date (Win32_VideoController) - plain factual display,
+                    no staleness/severity judgment. Same reasoning as Last Reboot: there's no
+                    honest universal "too old" threshold without knowing this specific GPU
+                    vendor's own release cadence. */}
+                <Kv
+                  label="GPU driver"
+                  value={
+                    detail.gpuDriverVersion == null
+                      ? "—"
+                      : `${detail.gpuDriverVersion}${detail.gpuDriverDate ? ` (${new Date(detail.gpuDriverDate).toLocaleDateString()})` : ""}`
+                  }
+                />
                 <Kv label="Battery health" value={dash(batteryHealthPct, "%")} />
                 <Kv label="Charge" value={dash(liveStatus?.batteryPct, "%")} />
               </div>
