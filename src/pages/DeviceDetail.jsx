@@ -499,6 +499,24 @@ export default function DeviceDetail() {
                         : `${detail.windowsUpdatePendingCount} pending`
                   }
                 />
+                {/* Real hourly BIOS/firmware check (runBiosFirmwareUpdateCheck) - same WUA
+                    search cadence as Windows Update above, filtered to System Firmware driver
+                    entries. Deliberately NOT folded into the composite score below (see PRD
+                    scope for this - a separate decision from just making this real and
+                    visible). checkedAt null means this device hasn't completed its first
+                    hourly check yet, distinct from a real "up to date". */}
+                <Kv
+                  label="BIOS/Firmware"
+                  value={
+                    detail.biosFirmwareCheckedAt == null
+                      ? "—"
+                      : !detail.biosFirmwareUpdateAvailable
+                        ? "Up to date"
+                        : detail.biosFirmwareLatestVersion
+                          ? `Update available (${detail.biosFirmwareLatestVersion})`
+                          : "Update available"
+                  }
+                />
               </div>
               <p className="section-sub" style={{ marginTop: 10 }}>TPM/Secure Boot/BitLocker are the same three signals as the agent title-bar — missing sensors stay —</p>
             </div>
