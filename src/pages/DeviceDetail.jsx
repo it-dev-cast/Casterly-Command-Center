@@ -82,6 +82,24 @@ function timeAgo(iso) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+// NVMe Base Spec 1.4 "Critical Warning" byte (SMART/Health Information Log) - the same 5 flag
+// bits smartctl's own -a output names. telemetry-server.mjs sends the raw bitmask as-is (the real
+// source fact); decoding it into a human label is display logic, so it lives here rather than in
+// the agent, same as Windows Update's "Up to date"/"pending" text above.
+const NVME_CRITICAL_WARNING_BITS = [
+  { bit: 0x01, label: "Spare capacity low" },
+  { bit: 0x02, label: "Temperature critical" },
+  { bit: 0x04, label: "Reliability degraded" },
+  { bit: 0x08, label: "Read-only mode" },
+  { bit: 0x10, label: "Backup device failed" },
+];
+function decodeNvmeCriticalWarning(bitmask) {
+  if (bitmask == null) return null;
+  if (bitmask === 0) return "OK";
+  const flagged = NVME_CRITICAL_WARNING_BITS.filter((b) => (bitmask & b.bit) !== 0).map((b) => b.label);
+  return flagged.length > 0 ? flagged.join(", ") : `Unrecognized flag (0x${bitmask.toString(16)})`;
+}
+
 // Display order/labels for the six real dimensions computeDeviceHealthScore actually scores -
 // weights read straight from HEALTH_SCORE_WEIGHTS (deviceHealthScore.js) rather than repeated
 // here as separate numbers that could drift out of sync with the real formula.
@@ -731,6 +749,22 @@ export default function DeviceDetail() {
             <StatCard icon={BatteryCharging} tone={toneIfLive(batteryTone(liveStatus?.batteryPct))} value={dash(liveStatus?.batteryPct, "%")} label="Charge" live={liveDot} />
             <StatCard icon={BatteryMedium} tone={toneIfLive(batteryHealthTone(batteryHealthPct))} value={dash(batteryHealthPct, "%")} label="Battery Health" live={liveDot && detail.batteryHealthPct != null} />
             <StatCard icon={Disc} tone={toneIfLive(ssdWearTone(ssdWearPct))} value={dash(ssdWearPct, "%")} label="SSD Wear" live={liveDot && detail.storageWearPct != null} />
+            {/* Real NVMe media_errors/critical_warning from nvme_smart_health_information_log -
+                NVMe has no ATA-style Reallocated_Sector_Ct equivalent (confirmed directly against
+                a real smartctl -a -j -d nvme run - no such field exists on this protocol, not
+                just unparsed), so this shows what NVMe actually exposes instead: media_errors is
+                the real lifetime count of unrecovered data-integrity errors; critical_warning is
+                the controller's own 5-bit health bitmask, decoded to text below. Neither is folded
+                into the composite Health Score - same "visible and honest first" scope as
+                BIOS/Windows Update/Domain-MDM above. */}
+            <StatCard icon={AlertTriangle} tone={toneIfLive(detail.storageMediaErrors == null ? "gray" : detail.storageMediaErrors > 0 ? "red" : "green")} value={dash(detail.storageMediaErrors)} label="Media Errors" live={liveDot && detail.storageMediaErrors != null} />
+            <StatCard
+              icon={detail.storageCriticalWarning == null ? Shield : detail.storageCriticalWarning === 0 ? ShieldCheck : ShieldAlert}
+              tone={toneIfLive(detail.storageCriticalWarning == null ? "gray" : detail.storageCriticalWarning === 0 ? "green" : "red")}
+              value={decodeNvmeCriticalWarning(detail.storageCriticalWarning) ?? "—"}
+              label="Drive Health"
+              live={liveDot && detail.storageCriticalWarning != null}
+            />
             <StatCard icon={Thermometer} tone={toneIfLive(detail.cpuTempC == null ? "gray" : detail.cpuTempC >= 85 ? "red" : "teal")} value={detail.cpuTempC != null ? `${Math.round(detail.cpuTempC)}°C` : "—"} label="CPU Temp" live={liveDot && detail.cpuTempC != null} />
             <StatCard icon={Gpu} tone={toneIfLive(detail.gpuUtilPct == null ? "gray" : "purple")} value={dash(detail.gpuUtilPct, "%")} label="GPU" meta={detail.gpuName} live={liveDot && detail.gpuUtilPct != null} />
             <StatCard icon={Thermometer} tone={toneIfLive(detail.gpuTempC == null ? "gray" : "purple")} value={detail.gpuTempC != null ? `${Math.round(detail.gpuTempC)}°C` : "—"} label="GPU Temp" live={liveDot && detail.gpuTempC != null} />
