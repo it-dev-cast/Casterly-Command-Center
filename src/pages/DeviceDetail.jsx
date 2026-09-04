@@ -853,6 +853,15 @@ export default function DeviceDetail() {
                 <Kv label="CPU" value={dash(detail.cpuName)} />
                 <Kv label="CPU temp" value={detail.cpuTempC != null ? `${Math.round(detail.cpuTempC)}°C` : "—"} />
                 <Kv label="Memory" value={detail.memTotalGB != null ? `${detail.memTotalGB} GB` : "—"} />
+                {/* Real installed-vs-total RAM slot count (Win32_PhysicalMemory module count vs.
+                    Win32_PhysicalMemoryArray.MemoryDevices) - honest fact only, no "should
+                    upgrade" recommendation. Gated on ramSlotsTotal specifically since that's the
+                    genuinely new collection; ramSlotsUsed shows as "—" on its own if the module
+                    list ever comes back empty this cycle while the slot count is still known. */}
+                <Kv
+                  label="RAM slots"
+                  value={detail.ramSlotsTotal == null ? "—" : `${detail.ramSlotsUsed ?? "—"} of ${detail.ramSlotsTotal} used`}
+                />
                 <Kv label="Disk" value={dash(detail.driveModel)} />
                 <Kv label="SSD wear" value={dash(ssdWearPct, "%")} />
               </div>
