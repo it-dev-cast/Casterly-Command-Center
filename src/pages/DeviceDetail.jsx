@@ -517,6 +517,33 @@ export default function DeviceDetail() {
                           : "Update available"
                   }
                 />
+                {/* Real hourly domain-join/Azure AD-join/MDM-enrollment check (runDomainMdmCheck,
+                    dsregcmd /status) - same cadence as Windows Update/BIOS above. Deliberately NOT
+                    folded into the composite score below (same "make it real and visible first"
+                    scope as BIOS/Windows Update - see deviceHealthScore.js). checkedAt null means
+                    this device hasn't completed its first hourly check yet, distinct from a real
+                    "not joined". Join type prioritizes Domain > Azure AD > Enterprise (legacy
+                    on-prem Workplace Join) > Workplace (Azure AD Registered/BYOD) since a device
+                    can genuinely be true on more than one (e.g. hybrid Azure AD join is both
+                    domain- and Azure-AD-joined) - this shows the most complete real join present. */}
+                <Kv
+                  label="Domain/MDM"
+                  value={
+                    detail.domainMdmCheckedAt == null
+                      ? "—"
+                      : `${
+                          detail.domainJoined
+                            ? "Domain-joined"
+                            : detail.azureAdJoined
+                              ? "Azure AD-joined"
+                              : detail.enterpriseJoined
+                                ? "Enterprise-joined"
+                                : detail.workplaceJoined
+                                  ? "Workplace-joined"
+                                  : "Not joined"
+                        }${detail.mdmEnrolled ? " · MDM-enrolled" : ""}`
+                  }
+                />
               </div>
               <p className="section-sub" style={{ marginTop: 10 }}>TPM/Secure Boot/BitLocker are the same three signals as the agent title-bar — missing sensors stay —</p>
             </div>
