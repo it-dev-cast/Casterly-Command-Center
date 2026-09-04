@@ -26,6 +26,17 @@ import { getLiveDetail } from "./liveDetail.js";
 // at the constant level (unlike the earlier 5-dimension version, which had to renormalize Thermal's
 // share away). Per-device renormalization in computeDeviceHealthScore below is unchanged - it
 // still activates whenever any dimension (thermal included) is unavailable for a specific device.
+//
+// Three dimensions got richer real inputs, not new weights - BIOS firmware currency and Defender
+// signature currency folded into OS & Software Health (worst-of-three with Windows Update, same
+// reasoning scoreThermalPerformance already established for "don't dilute one real problem by
+// averaging it against unrelated healthy signals"); MDM/domain-join and AV-product-registration
+// folded into Security (now five equally-weighted real booleans - TPM/SecureBoot/BitLocker plus
+// isDeviceManaged/isAvActive - instead of clamping the pre-averaged securityHealthPct); NVMe
+// media_errors/critical_warning folded into Storage Wear (worst-of-three with wear%). Battery
+// cycle count deliberately stays out - it's a wear indicator already reflected in
+// batteryHealthPct itself, and there's no honest universal "bad" cycle-count threshold without
+// knowing that specific battery's rated cycle life, which this app doesn't have.
 export const HEALTH_SCORE_WEIGHTS = {
   hardwareIntegrity: 30,
   storageWear: 20,
@@ -89,14 +100,67 @@ export function scoreBattery(batteryHealthPct) {
   return { score: clamp(batteryHealthPct, 0, 100), available: true };
 }
 
-export function scoreStorageWear(storageWearPct) {
-  if (storageWearPct == null) return { score: null, available: false };
-  return { score: clamp(100 - storageWearPct, 0, 100), available: true };
+// storageCriticalWarning/storageMediaErrors are treated as fixed-penalty states, not smooth
+// gradients, same reasoning as TAMPERED_SCORE below - both are NVMe facts about something that
+// has already genuinely happened (a real controller health flag; a real, non-reversible
+// data-integrity error count), not a continuously-degrading measurement the way wear% is.
+// storageMediaErrors' floor deliberately matches TAMPERED_SCORE's value (40) as a SEPARATE
+// constant, not a shared reference - both represent the same severity class (a real, already-
+// happened, non-reversible integrity event), but tuning one shouldn't silently retune the other.
+// Worst-of-three (not an average) for the same reason scoreThermalPerformance already picks the
+// worse of cpuTempC/gpuTempC: a real problem on any one of these three shouldn't be diluted by
+// averaging against the other two reading fine.
+const STORAGE_CRITICAL_WARNING_SCORE_FLOOR = 30;
+const STORAGE_MEDIA_ERRORS_SCORE_FLOOR = 40;
+
+export function scoreStorageWear(storageWearPct, storageCriticalWarning, storageMediaErrors) {
+  const scores = [];
+  if (storageWearPct != null) scores.push(clamp(100 - storageWearPct, 0, 100));
+  if (storageCriticalWarning != null) scores.push(storageCriticalWarning === 0 ? 100 : STORAGE_CRITICAL_WARNING_SCORE_FLOOR);
+  if (storageMediaErrors != null) scores.push(storageMediaErrors > 0 ? STORAGE_MEDIA_ERRORS_SCORE_FLOOR : 100);
+  if (scores.length === 0) return { score: null, available: false };
+  return { score: Math.min(...scores), available: true };
 }
 
-export function scoreSecurity(securityHealthPct) {
-  if (securityHealthPct == null) return { score: null, available: false };
-  return { score: clamp(securityHealthPct, 0, 100), available: true };
+// managed = true if this device is under ANY recognized enterprise oversight - MDM enrollment,
+// OR a traditional domain/Azure AD/legacy-enterprise join without MDM (common on older AD/GPO-
+// managed fleets). Narrower coverage (MDM-only) would unfairly read a domain-joined-but-not-MDM-
+// enrolled device as "unmanaged." Workplace Join (Azure AD Registered/BYOD) is deliberately NOT
+// included - that's a personal device with a work account added, not enterprise-owned/managed the
+// way the other four are. null (not false) when none of the four have ever been checked - a
+// device that hasn't completed its first dsregcmd check reads as unknown, not confidently
+// "unmanaged."
+export function isDeviceManaged({ mdmEnrolled, domainJoined, azureAdJoined, enterpriseJoined }) {
+  const checks = [mdmEnrolled, domainJoined, azureAdJoined, enterpriseJoined];
+  if (checks.every((v) => v == null)) return null;
+  return checks.some(Boolean);
+}
+
+// avActive = at least one AV product (Defender or third-party) is registered with Windows
+// Security Center - deliberately NOT combined with defenderRealTimeProtectionEnabled. A machine
+// running third-party AV normally has Defender's own real-time protection disabled by design
+// (avoiding conflicts) - SecurityCenter2's own productState field is the only way to check a
+// third-party product's real-time-protection state, and it has no Microsoft-published bit layout
+// (see extractLiveStatusFields' own comment on why it's never decoded). ANDing the two would
+// unfairly penalize every third-party-AV machine for a fact this app can't reliably check for
+// that product.
+export function isAvActive(avProductNames) {
+  if (!Array.isArray(avProductNames)) return null;
+  return avProductNames.length > 0;
+}
+
+// Five equally-weighted real checks (20% each), same "count of real signals present" shape
+// securityFromTelemetry (telemetry-server.mjs) already uses for the raw TPM/SecureBoot/BitLocker
+// average - just wider. Deliberately reads the three raw booleans directly (all three are sent
+// independently in `detail`, not just the pre-averaged securityHealthPct) rather than clamping
+// that existing percentage, so this dimension isn't locked to always weighting TPM/SecureBoot/
+// BitLocker as a single pre-baked 1/3 each - each of the five checks here is its own real 1/5.
+// securityHealthPct itself is untouched by this change - it's still computed and shown standalone
+// (the raw "Security" StatCard) exactly as before.
+export function scoreSecurity(tpmActive, secureBootEnabled, bitlockerOn, managed, avActive) {
+  const checks = [tpmActive, secureBootEnabled, bitlockerOn, managed, avActive].filter((v) => v != null);
+  if (checks.length === 0) return { score: null, available: false };
+  return { score: Math.round((checks.filter(Boolean).length / checks.length) * 100), available: true };
 }
 
 // Real, linear decay per pending update, not a smooth percentage - a Windows Update pending
@@ -111,12 +175,56 @@ export function scoreSecurity(securityHealthPct) {
 const WINDOWS_UPDATE_PENALTY_PER_PENDING = 10;
 const WINDOWS_UPDATE_SCORE_FLOOR = 20;
 
-export function scoreOsSoftwareHealth(windowsUpdatePendingCount, windowsUpdateCheckedAt) {
-  if (windowsUpdateCheckedAt == null || windowsUpdatePendingCount == null) return { score: null, available: false };
-  return {
-    score: clamp(100 - windowsUpdatePendingCount * WINDOWS_UPDATE_PENALTY_PER_PENDING, WINDOWS_UPDATE_SCORE_FLOOR, 100),
-    available: true,
-  };
+function scoreWindowsUpdate(windowsUpdatePendingCount, windowsUpdateCheckedAt) {
+  if (windowsUpdateCheckedAt == null || windowsUpdatePendingCount == null) return null;
+  return clamp(100 - windowsUpdatePendingCount * WINDOWS_UPDATE_PENALTY_PER_PENDING, WINDOWS_UPDATE_SCORE_FLOOR, 100);
+}
+
+// A fixed penalty, not a gradient - unlike Windows Update, biosFirmwareUpdateAvailable is a
+// boolean (available or not), not a count to decay against. Deliberately gentler than a single
+// pending Windows Update (-10, floor 20): BIOS updates are far rarer and usually far less urgent
+// (often optional/stability-only) than routine software patches, so one being available shouldn't
+// hit this dimension as hard.
+const BIOS_UPDATE_AVAILABLE_SCORE = 85;
+
+function scoreBiosUpdate(biosFirmwareUpdateAvailable, biosFirmwareCheckedAt) {
+  if (biosFirmwareCheckedAt == null || typeof biosFirmwareUpdateAvailable !== "boolean") return null;
+  return biosFirmwareUpdateAvailable ? BIOS_UPDATE_AVAILABLE_SCORE : 100;
+}
+
+// Real, linear decay by signature age - same good-max/critical-min/floor shape as
+// scoreThermalPerformance below, reused rather than a new curve invented for this. 2 days covers
+// a machine that was briefly off/asleep without false-flagging (Defender updates roughly daily
+// when reachable); 14 days (two weeks stale) is a real problem - something's likely broken, not
+// just quiet. Floor of 20 matches Windows Update's own floor, same "real but non-critical"
+// severity tier reused, not a new number invented for this specific penalty.
+const DEFENDER_SIGNATURE_GOOD_MAX_DAYS = 2;
+const DEFENDER_SIGNATURE_CRITICAL_MIN_DAYS = 14;
+const DEFENDER_SIGNATURE_SCORE_FLOOR = 20;
+
+function scoreDefenderSignatureCurrency(defenderSignatureLastUpdated) {
+  if (defenderSignatureLastUpdated == null) return null;
+  const ageDays = (Date.now() - new Date(defenderSignatureLastUpdated).getTime()) / (1000 * 60 * 60 * 24);
+  if (ageDays <= DEFENDER_SIGNATURE_GOOD_MAX_DAYS) return 100;
+  if (ageDays >= DEFENDER_SIGNATURE_CRITICAL_MIN_DAYS) return DEFENDER_SIGNATURE_SCORE_FLOOR;
+  const fractionToFloor = (ageDays - DEFENDER_SIGNATURE_GOOD_MAX_DAYS) / (DEFENDER_SIGNATURE_CRITICAL_MIN_DAYS - DEFENDER_SIGNATURE_GOOD_MAX_DAYS);
+  return Math.round(100 - fractionToFloor * (100 - DEFENDER_SIGNATURE_SCORE_FLOOR));
+}
+
+// Worst-of-three (not an average), same reasoning as scoreThermalPerformance/scoreStorageWear -
+// Windows Update currency, BIOS currency, and Defender signature currency are three independent
+// "is this specific piece of software/firmware current" facts; a real problem in any one of them
+// shouldn't be diluted by averaging against the other two reading fine. Each sub-score is gated
+// independently on its own real signal, so a device missing one or two of the three checks still
+// scores on whichever it has.
+export function scoreOsSoftwareHealth(windowsUpdatePendingCount, windowsUpdateCheckedAt, biosFirmwareUpdateAvailable, biosFirmwareCheckedAt, defenderSignatureLastUpdated) {
+  const scores = [
+    scoreWindowsUpdate(windowsUpdatePendingCount, windowsUpdateCheckedAt),
+    scoreBiosUpdate(biosFirmwareUpdateAvailable, biosFirmwareCheckedAt),
+    scoreDefenderSignatureCurrency(defenderSignatureLastUpdated),
+  ].filter((s) => s != null);
+  if (scores.length === 0) return { score: null, available: false };
+  return { score: Math.min(...scores), available: true };
 }
 
 // Real, linear decay from a real "starts being bad" reference point - 85C is the same threshold
@@ -155,15 +263,23 @@ export function scoreThermalPerformance(cpuTempC, gpuTempC) {
 // unavailable for this device - an honest "not enough real data yet" rather than a fabricated
 // default score.
 export function computeDeviceHealthScore({
-  device, events, batteryHealthPct, storageWearPct, securityHealthPct,
+  device, events, batteryHealthPct, storageWearPct,
   windowsUpdatePendingCount, windowsUpdateCheckedAt, cpuTempC, gpuTempC,
+  storageCriticalWarning, storageMediaErrors,
+  tpmActive, secureBootEnabled, bitlockerOn,
+  mdmEnrolled, domainJoined, azureAdJoined, enterpriseJoined, avProductNames,
+  biosFirmwareUpdateAvailable, biosFirmwareCheckedAt, defenderSignatureLastUpdated,
 }) {
   const dimensions = {
     hardwareIntegrity: scoreHardwareIntegrity(device, events),
-    storageWear: scoreStorageWear(storageWearPct),
+    storageWear: scoreStorageWear(storageWearPct, storageCriticalWarning, storageMediaErrors),
     battery: scoreBattery(batteryHealthPct),
-    security: scoreSecurity(securityHealthPct),
-    osSoftwareHealth: scoreOsSoftwareHealth(windowsUpdatePendingCount, windowsUpdateCheckedAt),
+    security: scoreSecurity(
+      tpmActive, secureBootEnabled, bitlockerOn,
+      isDeviceManaged({ mdmEnrolled, domainJoined, azureAdJoined, enterpriseJoined }),
+      isAvActive(avProductNames),
+    ),
+    osSoftwareHealth: scoreOsSoftwareHealth(windowsUpdatePendingCount, windowsUpdateCheckedAt, biosFirmwareUpdateAvailable, biosFirmwareCheckedAt, defenderSignatureLastUpdated),
     thermal: scoreThermalPerformance(cpuTempC, gpuTempC),
   };
 

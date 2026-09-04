@@ -405,10 +405,23 @@ export default function DeviceDetail() {
   const healthScore = deviceIsOffline
     ? { overall: null, dimensions: {} }
     : computeDeviceHealthScore({
-        device, events, batteryHealthPct, storageWearPct: ssdWearPct, securityHealthPct: detail.securityHealthPct,
+        device, events, batteryHealthPct, storageWearPct: ssdWearPct,
         windowsUpdatePendingCount: detail.windowsUpdatePendingCount ?? null,
         windowsUpdateCheckedAt: detail.windowsUpdateCheckedAt ?? null,
         cpuTempC: detail.cpuTempC ?? null, gpuTempC: detail.gpuTempC ?? null,
+        storageCriticalWarning: detail.storageCriticalWarning ?? null,
+        storageMediaErrors: detail.storageMediaErrors ?? null,
+        tpmActive: detail.tpmActive ?? null,
+        secureBootEnabled: detail.secureBootEnabled ?? null,
+        bitlockerOn: detail.bitlockerOn ?? null,
+        mdmEnrolled: detail.mdmEnrolled ?? null,
+        domainJoined: detail.domainJoined ?? null,
+        azureAdJoined: detail.azureAdJoined ?? null,
+        enterpriseJoined: detail.enterpriseJoined ?? null,
+        avProductNames: detail.avProductNames ?? null,
+        biosFirmwareUpdateAvailable: detail.biosFirmwareUpdateAvailable ?? null,
+        biosFirmwareCheckedAt: detail.biosFirmwareCheckedAt ?? null,
+        defenderSignatureLastUpdated: detail.defenderSignatureLastUpdated ?? null,
       });
   // Same offline gate as healthScore above - a frozen temperature reading from an offline
   // device is exactly the same "looks current, isn't" problem, even for this supplementary

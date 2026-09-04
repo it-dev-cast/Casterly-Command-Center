@@ -221,11 +221,23 @@ export default function Dashboard() {
       healthScore: !offlineDeviceIds.has(d.id)
         ? computeDeviceHealthScore({
             device: d, events, batteryHealthPct, storageWearPct,
-            securityHealthPct: status_?.detail?.securityHealthPct ?? null,
             windowsUpdatePendingCount: status_?.detail?.windowsUpdatePendingCount ?? null,
             windowsUpdateCheckedAt: status_?.detail?.windowsUpdateCheckedAt ?? null,
             cpuTempC: status_?.detail?.cpuTempC ?? null,
             gpuTempC: status_?.detail?.gpuTempC ?? null,
+            storageCriticalWarning: status_?.detail?.storageCriticalWarning ?? null,
+            storageMediaErrors: status_?.detail?.storageMediaErrors ?? null,
+            tpmActive: status_?.detail?.tpmActive ?? null,
+            secureBootEnabled: status_?.detail?.secureBootEnabled ?? null,
+            bitlockerOn: status_?.detail?.bitlockerOn ?? null,
+            mdmEnrolled: status_?.detail?.mdmEnrolled ?? null,
+            domainJoined: status_?.detail?.domainJoined ?? null,
+            azureAdJoined: status_?.detail?.azureAdJoined ?? null,
+            enterpriseJoined: status_?.detail?.enterpriseJoined ?? null,
+            avProductNames: status_?.detail?.avProductNames ?? null,
+            biosFirmwareUpdateAvailable: status_?.detail?.biosFirmwareUpdateAvailable ?? null,
+            biosFirmwareCheckedAt: status_?.detail?.biosFirmwareCheckedAt ?? null,
+            defenderSignatureLastUpdated: status_?.detail?.defenderSignatureLastUpdated ?? null,
           })
         : { overall: null, dimensions: {} },
     };

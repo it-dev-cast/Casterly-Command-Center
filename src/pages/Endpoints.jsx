@@ -173,11 +173,23 @@ export default function Endpoints() {
       healthScore: d.status === "active" && !offlineDeviceIds.has(d.id)
         ? computeDeviceHealthScore({
             device: d, events, batteryHealthPct, storageWearPct,
-            securityHealthPct: liveStatus?.detail?.securityHealthPct ?? null,
             windowsUpdatePendingCount: liveStatus?.detail?.windowsUpdatePendingCount ?? null,
             windowsUpdateCheckedAt: liveStatus?.detail?.windowsUpdateCheckedAt ?? null,
             cpuTempC: liveStatus?.detail?.cpuTempC ?? null,
             gpuTempC: liveStatus?.detail?.gpuTempC ?? null,
+            storageCriticalWarning: liveStatus?.detail?.storageCriticalWarning ?? null,
+            storageMediaErrors: liveStatus?.detail?.storageMediaErrors ?? null,
+            tpmActive: liveStatus?.detail?.tpmActive ?? null,
+            secureBootEnabled: liveStatus?.detail?.secureBootEnabled ?? null,
+            bitlockerOn: liveStatus?.detail?.bitlockerOn ?? null,
+            mdmEnrolled: liveStatus?.detail?.mdmEnrolled ?? null,
+            domainJoined: liveStatus?.detail?.domainJoined ?? null,
+            azureAdJoined: liveStatus?.detail?.azureAdJoined ?? null,
+            enterpriseJoined: liveStatus?.detail?.enterpriseJoined ?? null,
+            avProductNames: liveStatus?.detail?.avProductNames ?? null,
+            biosFirmwareUpdateAvailable: liveStatus?.detail?.biosFirmwareUpdateAvailable ?? null,
+            biosFirmwareCheckedAt: liveStatus?.detail?.biosFirmwareCheckedAt ?? null,
+            defenderSignatureLastUpdated: liveStatus?.detail?.defenderSignatureLastUpdated ?? null,
           })
         : { overall: null, dimensions: {} },
       // Unlike healthScore above, not gated on online/offline - this is a derived fact from
