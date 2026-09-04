@@ -840,6 +840,35 @@ export default function DeviceDetail() {
           </div>
           {!liveStatus && <div className="empty-note" style={{ marginTop: 12 }}>No live telemetry received from this device yet.</div>}
           {liveStatus && deviceIsOffline && <div className="empty-note" style={{ marginTop: 12, color: "var(--amber)" }}>This device is currently offline — the values above are its last reported readings, not current.</div>}
+          {/* Full per-volume breakdown (Win32_LogicalDisk, every local fixed volume - not just
+              C:) - the Disk tile above only ever shows the single worst/fullest one. No
+              per-volume severity tone beyond what the Disk tile already uses (DISK_USAGE_THRESHOLDS)
+              - not inventing a second threshold scale for the same underlying usage-percentage fact. */}
+          {Array.isArray(detail.volumes) && detail.volumes.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <p className="section-sub" style={{ marginBottom: 8, fontWeight: 600 }}>Volumes</p>
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead><tr><th>Drive</th><th>Label</th><th>Size</th><th>Free</th></tr></thead>
+                  <tbody>
+                    {detail.volumes.map((v) => {
+                      const usedPct = v.sizeGB > 0 && v.freeGB != null ? ((v.sizeGB - v.freeGB) / v.sizeGB) * 100 : null;
+                      const tone = usedPct != null ? usageTone(usedPct, DISK_USAGE_THRESHOLDS) : "gray";
+                      const toneColor = { red: "var(--red)", amber: "var(--amber)", green: "var(--green)", gray: "var(--text-faint)" }[tone];
+                      return (
+                        <tr key={v.letter}>
+                          <td className="mono">{v.letter}</td>
+                          <td>{dash(v.label)}</td>
+                          <td>{dash(v.sizeGB, " GB")}</td>
+                          <td style={{ color: toneColor }}>{dash(v.freeGB, " GB")}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
