@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ArrowLeft, Lock, Cpu, MemoryStick, HardDrive, BatteryMedium, BatteryCharging, Disc, TrendingDown, TrendingUp,
-  Search, ShieldCheck, ShieldAlert, AlertTriangle, Info, Thermometer, Gpu, Shield,
+  Search, ShieldCheck, ShieldAlert, AlertTriangle, Info, Thermometer, Gpu, Shield, RotateCw,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useLiveData, healthFromLiveStatus, CPU_USAGE_THRESHOLDS, RAM_USAGE_THRESHOLDS, DISK_USAGE_THRESHOLDS } from "../context/LiveDataContext.jsx";
@@ -748,6 +748,17 @@ export default function DeviceDetail() {
             <StatCard icon={HardDrive} tone={toneIfLive(usageTone(liveStatus?.diskPct, DISK_USAGE_THRESHOLDS))} value={dash(liveStatus?.diskPct, "%")} label="Disk" meta={detail.diskFreeGB != null ? `${detail.diskFreeGB} GB free` : null} live={liveDot} />
             <StatCard icon={BatteryCharging} tone={toneIfLive(batteryTone(liveStatus?.batteryPct))} value={dash(liveStatus?.batteryPct, "%")} label="Charge" live={liveDot} />
             <StatCard icon={BatteryMedium} tone={toneIfLive(batteryHealthTone(batteryHealthPct))} value={dash(batteryHealthPct, "%")} label="Battery Health" live={liveDot && detail.batteryHealthPct != null} />
+            {/* Real battery cycle count - but only when rust's own independent reading
+                corroborates the concept is supported on this hardware (see telemetry-server.mjs's
+                collect() merge comment): root/wmi's raw BatteryCycleCount is cross-validated as
+                unreliable on this exact real machine (a "0" with no error, for a battery already
+                at 44% design-capacity wear - implausible for a genuinely 0-cycle battery), so a
+                null here means "unverifiable on this hardware," not "definitely zero." Battery
+                temperature is deliberately NOT surfaced anywhere - confirmed absent on this real
+                machine via two independent sources (LibreHardwareMonitor and rust's own Windows
+                Battery API), a genuine hardware ceiling, same category as this project's known
+                fan-RPM gap. */}
+            <StatCard icon={RotateCw} tone={toneIfLive(detail.batteryCycleCount == null ? "gray" : "teal")} value={dash(detail.batteryCycleCount)} label="Battery Cycles" live={liveDot && detail.batteryCycleCount != null} />
             <StatCard icon={Disc} tone={toneIfLive(ssdWearTone(ssdWearPct))} value={dash(ssdWearPct, "%")} label="SSD Wear" live={liveDot && detail.storageWearPct != null} />
             {/* Real NVMe media_errors/critical_warning from nvme_smart_health_information_log -
                 NVMe has no ATA-style Reallocated_Sector_Ct equivalent (confirmed directly against
