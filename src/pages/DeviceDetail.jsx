@@ -100,6 +100,25 @@ function decodeNvmeCriticalWarning(bitmask) {
   return flagged.length > 0 ? flagged.join(", ") : `Unrecognized flag (0x${bitmask.toString(16)})`;
 }
 
+// Windows SoftwareLicensingProduct.LicenseStatus - a small, Microsoft-documented enum (unlike
+// SecurityCenter2's productState), so decoded with confidence. telemetry-server.mjs sends the raw
+// integer (the real source fact, already isolated from ~60 decoy placeholder SKU rows agent-side
+// - see get-telemetry.ps1's own comment); decoding it into a label is display logic, same pattern
+// as decodeNvmeCriticalWarning above.
+const WINDOWS_LICENSE_STATUS_LABELS = {
+  0: "Unlicensed",
+  1: "Licensed",
+  2: "Grace period (initial)",
+  3: "Grace period (out-of-tolerance)",
+  4: "Grace period (non-genuine)",
+  5: "Notification (license expired)",
+  6: "Extended grace period",
+};
+function decodeWindowsLicenseStatus(status) {
+  if (status == null) return null;
+  return WINDOWS_LICENSE_STATUS_LABELS[status] ?? `Unrecognized status (${status})`;
+}
+
 // Display order/labels for the six real dimensions computeDeviceHealthScore actually scores -
 // weights read straight from HEALTH_SCORE_WEIGHTS (deviceHealthScore.js) rather than repeated
 // here as separate numbers that could drift out of sync with the real formula.
@@ -550,6 +569,18 @@ export default function DeviceDetail() {
                     intentional restart, waking from sleep) using uptime alone, so this shows the
                     fact and nothing more. */}
                 <Kv label="Last Reboot" value={detail.lastBootTime == null ? "—" : timeAgo(detail.lastBootTime)} />
+                {/* Real Windows license/activation status - no fabricated severity, just the
+                    honest state. licenseFamily/licenseChannel (e.g. "Professional" /
+                    "OEM:DM") shown alongside the decoded status for real context, not just a
+                    bare "Licensed"/"Unlicensed". */}
+                <Kv
+                  label="Windows License"
+                  value={
+                    detail.windowsLicenseStatus == null
+                      ? "—"
+                      : `${decodeWindowsLicenseStatus(detail.windowsLicenseStatus)}${detail.windowsLicenseFamily ? ` (${detail.windowsLicenseFamily}${detail.windowsLicenseChannel ? `, ${detail.windowsLicenseChannel}` : ""})` : ""}`
+                  }
+                />
                 {/* Real hourly BIOS/firmware check (runBiosFirmwareUpdateCheck) - same WUA
                     search cadence as Windows Update above, filtered to System Firmware driver
                     entries. Deliberately NOT folded into the composite score below (see PRD
