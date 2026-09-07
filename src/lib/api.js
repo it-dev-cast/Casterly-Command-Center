@@ -76,6 +76,10 @@ export const api = {
 
   // Remote Assist
   listRemoteSessions: (token) => request(`/v1/tenants/${TENANT_ID}/remote-sessions`, { token }),
+  // PRD §30 Remote Assist hardening - the operator's real, instant Disconnect. Bypasses
+  // sessionRemovalGracePeriod entirely (see backend/remote_session.go's endImmediately) rather
+  // than just closing this browser's own WebSocket and waiting 25s for the store to notice.
+  endRemoteSession: (token, sessionId) => request(`/v1/tenants/${TENANT_ID}/remote-sessions/${sessionId}/end`, { method: "POST", token }),
 
   // Real, admin-configurable offline-detection threshold (backend/settings.go) - previously a
   // hardcoded Go constant, now readable/writable here.

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Square, Play, Mic, MicOff, PauseCircle, Download, AlertTriangle, Clock, Monitor, MessageSquare, Radio } from "lucide-react";
-import { BACKEND_URL } from "../lib/api.js";
+import { BACKEND_URL, api } from "../lib/api.js";
 
 const ICE_SERVERS = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 const CONNECT_TIMEOUT_MS = 15000;
@@ -109,7 +109,7 @@ async function sendFileOverChannel(dc, file, from, onProgress) {
 
 const MODE_TEXT = { screen: "Screen Share", voice: "Voice + Chat", chat: "Chat Only" };
 
-export default function RemoteSessionViewer({ sessionId, onClose, hostname, mode = "screen", deviceId, stillInQueue }) {
+export default function RemoteSessionViewer({ sessionId, onClose, hostname, mode = "screen", deviceId, stillInQueue, token }) {
   const [status, setStatus] = useState("connecting");
   const [connectedAt, setConnectedAt] = useState(null);
   const [elapsed, setElapsed] = useState(0);
@@ -361,6 +361,24 @@ export default function RemoteSessionViewer({ sessionId, onClose, hostname, mode
   const screenLabel = remotePaused ? "Paused" : hasRemoteVideo ? "Live" : (mode === "screen" ? "Waiting" : "Off");
   const screenTone = remotePaused ? "wait" : hasRemoteVideo ? "ok" : "muted";
 
+  // PRD §30 Remote Assist hardening - previously this button only closed THIS browser's own
+  // WebRTC/WebSocket connection (the cleanup effect below), leaving the real session sitting in
+  // the backend's store for a full sessionRemovalGracePeriod (25s) before it actually disappeared
+  // - the exact "Disconnect doesn't seem to work" gap found live. Tells the backend the session
+  // is deliberately over FIRST (endImmediately, instant removal, no grace period), then runs the
+  // same local teardown onClose already did - best-effort: a failed backend call (already gone,
+  // network blip) must never block the operator's own local disconnect from completing.
+  async function handleDisconnect() {
+    if (token) {
+      try {
+        await api.endRemoteSession(token, sessionId);
+      } catch (e) {
+        console.warn("[remote-assist] failed to notify the backend this session ended:", e);
+      }
+    }
+    onClose();
+  }
+
   return (
     <div className="card ra-session">
       <div className="section-head">
@@ -374,7 +392,7 @@ export default function RemoteSessionViewer({ sessionId, onClose, hostname, mode
             {stillInQueue === false ? " · left the queue" : ""}
           </p>
         </div>
-        <button type="button" className="btn danger" onClick={onClose}>
+        <button type="button" className="btn danger" onClick={handleDisconnect}>
           <Square size={13} /> Disconnect
         </button>
       </div>

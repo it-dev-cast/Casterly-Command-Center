@@ -171,6 +171,7 @@ export default function RemoteAssist() {
         <RemoteSessionViewer
           key={joinedSessionId}
           sessionId={joinedSessionId}
+          token={token}
           hostname={
             joinedSession?.hostname || hostnameById[joinedSession?.deviceId]
               ? `${joinedSession?.hostname || hostnameById[joinedSession?.deviceId]} ${shortDeviceTag(joinedSession?.deviceId)}`
