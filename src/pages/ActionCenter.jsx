@@ -41,6 +41,7 @@ export default function ActionCenter() {
   const [approvalsLoading, setApprovalsLoading] = useState(true);
   const [busyRequestId, setBusyRequestId] = useState(null);
   const [aiSignals, setAiSignals] = useState([]);
+  const [aiError, setAiError] = useState(null);
   const [aiLoading, setAiLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState(null);
 
@@ -71,15 +72,17 @@ export default function ActionCenter() {
     // active device count, which is fine at this fleet's real size but worth reconsidering if the
     // fleet grows very large.
     const activeDevices = devices.filter((d) => d.status === "active");
-    if (activeDevices.length === 0) { setAiLoading(false); return; }
+    if (activeDevices.length === 0) { setAiSignals([]); setAiError(null); setAiLoading(false); return; }
     setAiLoading(true);
     Promise.all(activeDevices.map((d) =>
       api.getDeviceMetricSnapshots(token, d.id)
         .then((snapshots) => ({ device: d, prediction: predictDeviceHealth(snapshots) }))
-        .catch(() => null)
+        .catch((e) => ({ error: e.message }))
     )).then((results) => {
+      const failures = results.filter((r) => r?.error);
+      setAiError(failures.length > 0 ? `${failures.length} of ${activeDevices.length} device prediction${failures.length === 1 ? "" : "s"} failed to load` : null);
       const signals = [];
-      results.filter(Boolean).forEach(({ device, prediction }) => {
+      results.filter((r) => r && !r.error).forEach(({ device, prediction }) => {
         if (prediction.battery.status === "ok" && prediction.battery.risk === "High") {
           signals.push({ device, metric: "Battery Health", ...prediction.battery });
         }
@@ -356,7 +359,8 @@ export default function ActionCenter() {
                 </tr>
               ))}
               {aiLoading && <tr><td colSpan={5} className="empty-note">Computing real per-device predictions…</td></tr>}
-              {!aiLoading && aiSignals.length === 0 && <tr><td colSpan={5} className="empty-note">No devices currently show elevated hardware risk (or not enough snapshot history yet to project).</td></tr>}
+              {!aiLoading && aiError && <tr><td colSpan={5} className="empty-note" style={{ color: "var(--red)" }}>Couldn't load some AI predictions: {aiError}</td></tr>}
+              {!aiLoading && !aiError && aiSignals.length === 0 && <tr><td colSpan={5} className="empty-note">No devices currently show elevated hardware risk (or not enough snapshot history yet to project).</td></tr>}
             </tbody>
           </table>
         </div>

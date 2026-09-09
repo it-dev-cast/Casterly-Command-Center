@@ -48,12 +48,13 @@ function PredictionCell({ p }) {
 export default function AiIntelligence() {
   const { token, devices } = useLiveData();
   const [predictions, setPredictions] = useState([]); // [{device, prediction}]
+  const [predictionsError, setPredictionsError] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!token) return;
     const activeDevices = devices.filter((d) => d.status === "active");
-    if (activeDevices.length === 0) { setPredictions([]); setLoading(false); return; }
+    if (activeDevices.length === 0) { setPredictions([]); setPredictionsError(null); setLoading(false); return; }
     setLoading(true);
     Promise.all(activeDevices.map((d) =>
       api.getDeviceMetricSnapshots(token, d.id)
@@ -65,8 +66,12 @@ export default function AiIntelligence() {
           // without a second fetch.
           lastSnapshotAt: snapshots.length ? snapshots[snapshots.length - 1].recordedAt : null,
         }))
-        .catch(() => null)
-    )).then((results) => setPredictions(results.filter(Boolean))).finally(() => setLoading(false));
+        .catch((e) => ({ error: e.message }))
+    )).then((results) => {
+      const failures = results.filter((r) => r?.error);
+      setPredictionsError(failures.length > 0 ? `${failures.length} of ${activeDevices.length} device prediction${failures.length === 1 ? "" : "s"} failed to load` : null);
+      setPredictions(results.filter((r) => r && !r.error));
+    }).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, devices.length]);
 
@@ -126,7 +131,8 @@ export default function AiIntelligence() {
                 </tr>
               ))}
               {loading && <tr><td colSpan={4} className="empty-note">Computing real per-device predictions…</td></tr>}
-              {!loading && predictions.length === 0 && <tr><td colSpan={4} className="empty-note">No active devices to analyze.</td></tr>}
+              {!loading && predictionsError && <tr><td colSpan={4} className="empty-note" style={{ color: "var(--red)" }}>Couldn't load some predictions: {predictionsError}</td></tr>}
+              {!loading && !predictionsError && predictions.length === 0 && <tr><td colSpan={4} className="empty-note">No active devices to analyze.</td></tr>}
             </tbody>
           </table>
         </div>

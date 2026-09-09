@@ -602,6 +602,9 @@ export default function Settings() {
               </div>
 
               <div className="card">
+                {/* Verified against backend/models.go:82-85 - maxEventsPerDevice = 200,
+                    eventRetentionDays = 90. Matches the text below exactly; re-check this
+                    comment if those constants ever change. */}
                 <h3 className="section-title" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                   Data Retention
                   <Info size={13} color="var(--text-faint)" style={{ cursor: "help" }} title="Real, fixed backend policy (backend/models.go) — not editable here, since it isn't a client-side preference. Applied automatically after every real event this backend records." />

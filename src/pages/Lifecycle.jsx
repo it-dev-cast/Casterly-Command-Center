@@ -123,11 +123,13 @@ export default function Lifecycle() {
   const approvedCount = approvals.filter((a) => a.status === "approved").length;
   const rejectedCount = approvals.filter((a) => a.status === "rejected").length;
   const featuresIncluded = entitlement?.features?.filter((f) => f.included).length ?? 0;
-  const chartData = snapshots.map((s) => ({
-    date: new Date(s.recordedAt).toLocaleDateString(),
-    "Battery Health %": s.batteryHealthPct,
-    "SSD Wear %": s.ssdWearPct,
-  }));
+  const chartData = snapshots
+    .filter((s) => s.recordedAt && !Number.isNaN(new Date(s.recordedAt).getTime()))
+    .map((s) => ({
+      date: new Date(s.recordedAt).toLocaleDateString(),
+      "Battery Health %": s.batteryHealthPct,
+      "SSD Wear %": s.ssdWearPct,
+    }));
 
   return (
     <div>
