@@ -36,11 +36,19 @@ export default function RemoteAssist() {
   const [searchParams] = useSearchParams();
   const focusDevice = searchParams.get("device");
   const [sessions, setSessions] = useState([]);
-  const [joinedSessionId, setJoinedSessionId] = useState(null);
+  const [joinedSessionIds, setJoinedSessionIds] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState(null);
+  const [queueError, setQueueError] = useState(null);
   const [nowMs, setNowMs] = useState(Date.now());
   const pollInFlight = useRef(false);
+
+  function joinSession(id) {
+    setJoinedSessionIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  }
+  function leaveSession(id) {
+    setJoinedSessionIds((prev) => prev.filter((x) => x !== id));
+  }
 
   const poll = useCallback(() => {
     if (!token || pollInFlight.current) return Promise.resolve();
@@ -49,8 +57,9 @@ export default function RemoteAssist() {
       .then((list) => {
         setSessions(Array.isArray(list) ? list : []);
         setLastRefreshAt(Date.now());
+        setQueueError(null);
       })
-      .catch(() => {})
+      .catch((e) => setQueueError(e.message || "Failed to load the session queue"))
       .finally(() => { pollInFlight.current = false; });
   }, [token]);
 
@@ -61,42 +70,43 @@ export default function RemoteAssist() {
 
   useEffect(() => {
     if (!token) return;
-    let cancelled = false;
-    function tick() {
-      if (document.hidden) return;
-      api.listRemoteSessions(token).then((list) => {
-        if (!cancelled) {
-          setSessions(Array.isArray(list) ? list : []);
-          setLastRefreshAt(Date.now());
-        }
-      }).catch(() => {});
-    }
-    tick();
-    const interval = setInterval(tick, BASE_POLL_MS);
+    poll();
+    const interval = setInterval(poll, BASE_POLL_MS);
     function onVisible() {
-      if (document.visibilityState === "visible") tick();
+      if (document.visibilityState === "visible") poll();
     }
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     return () => {
-      cancelled = true;
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [token]);
+  }, [token, poll]);
 
-  const latestRemoteEventId = events.find((e) => e.eventType === "remote-assist-requested")?.id;
+  // Real event types this endpoint's ScreenSharePOC.tsx actually posts (verified directly -
+  // "remote-assist-requested" was never one of them, so this fast-path never fired). No event
+  // exists yet for the moment a session is first *created* - these four cover every real
+  // lifecycle transition after that (join requested/approved/denied, session ended), so the
+  // queue stays in sync promptly for status changes even though brand-new sessions still rely
+  // on the interval poll (now uncapped, see above) rather than a push.
+  const RELEVANT_REMOTE_EVENT_TYPES = new Set([
+    "remote-assist-join-request-received",
+    "remote-assist-operator-joined",
+    "remote-assist-join-denied",
+    "remote-assist-ended",
+  ]);
+  const latestRemoteEventId = events.find((e) => RELEVANT_REMOTE_EVENT_TYPES.has(e.eventType))?.id;
   useEffect(() => {
     if (!latestRemoteEventId) return;
     poll();
   }, [latestRemoteEventId, poll]);
 
   useEffect(() => {
-    if (!focusDevice || joinedSessionId) return;
+    if (!focusDevice) return;
     const match = sessions.find((s) => s.deviceId === focusDevice);
-    if (match) setJoinedSessionId(match.id);
-  }, [focusDevice, sessions, joinedSessionId]);
+    if (match && !joinedSessionIds.includes(match.id)) joinSession(match.id);
+  }, [focusDevice, sessions, joinedSessionIds]);
 
   async function handleManualRefresh() {
     setRefreshing(true);
@@ -109,11 +119,11 @@ export default function RemoteAssist() {
   const screenShareCount = sessions.filter((s) => s.mode === "screen").length;
   const voiceChatCount = sessions.filter((s) => s.mode === "voice").length;
   const chatOnlyCount = sessions.filter((s) => s.mode === "chat").length;
-  const joinedSession = sessions.find((s) => s.id === joinedSessionId) || null;
   const hostnameById = useMemo(
     () => Object.fromEntries(devices.map((d) => [d.id, d.hostname])),
     [devices],
   );
+  const unjoinedWaiting = waiting.filter((s) => !joinedSessionIds.includes(s.id));
 
   return (
     <div>
@@ -135,24 +145,24 @@ export default function RemoteAssist() {
             <Clock size={13} />
             {waiting.length} waiting
           </span>
-          <span className={`ra-chip ${joinedSessionId ? "ok" : ""}`}>
+          <span className={`ra-chip ${joinedSessionIds.length > 0 ? "ok" : ""}`}>
             <CircleDot size={13} />
-            {joinedSessionId ? "Session open" : "Idle"}
+            {joinedSessionIds.length > 0 ? `${joinedSessionIds.length} session${joinedSessionIds.length === 1 ? "" : "s"} open` : "Idle"}
           </span>
         </div>
       </div>
 
-      {waiting.length > 0 && !joinedSessionId && (
+      {unjoinedWaiting.length > 0 && (
         <button
           type="button"
           className="remote-wait-banner"
-          onClick={() => setJoinedSessionId(waiting[0].id)}
+          onClick={() => joinSession(unjoinedWaiting[0].id)}
         >
           <PhoneCall size={16} />
           <span>
-            {waiting.length === 1
-              ? `${waiting[0].hostname || hostnameById[waiting[0].deviceId] || "An endpoint"} ${shortDeviceTag(waiting[0].deviceId)} is waiting — ${MODE_TEXT[waiting[0].mode] || "Screen Share"}`
-              : `${waiting.length} endpoints waiting for an operator`}
+            {unjoinedWaiting.length === 1
+              ? `${unjoinedWaiting[0].hostname || hostnameById[unjoinedWaiting[0].deviceId] || "An endpoint"} ${shortDeviceTag(unjoinedWaiting[0].deviceId)} is waiting — ${MODE_TEXT[unjoinedWaiting[0].mode] || "Screen Share"}`
+              : `${unjoinedWaiting.length} endpoints waiting for an operator`}
           </span>
           <span className="remote-wait-go">Join →</span>
         </button>
@@ -167,24 +177,28 @@ export default function RemoteAssist() {
         <StatCard icon={MessageSquare} tone="gray" value={chatOnlyCount} label="Chat Only" live={connected} />
       </div>
 
-      {joinedSessionId && (
-        <RemoteSessionViewer
-          key={joinedSessionId}
-          sessionId={joinedSessionId}
-          token={token}
-          hostname={
-            joinedSession?.hostname || hostnameById[joinedSession?.deviceId]
-              ? `${joinedSession?.hostname || hostnameById[joinedSession?.deviceId]} ${shortDeviceTag(joinedSession?.deviceId)}`
-              : joinedSession?.deviceId || "Endpoint"
-          }
-          mode={joinedSession?.mode || "screen"}
-          deviceId={joinedSession?.deviceId}
-          stillInQueue={!!joinedSession}
-          onClose={() => { setJoinedSessionId(null); poll(); }}
-        />
-      )}
+      {joinedSessionIds.map((id, i) => {
+        const session = sessions.find((s) => s.id === id) || null;
+        return (
+          <div key={id} style={{ marginBottom: i < joinedSessionIds.length - 1 ? 16 : 0 }}>
+            <RemoteSessionViewer
+              sessionId={id}
+              token={token}
+              hostname={
+                session?.hostname || hostnameById[session?.deviceId]
+                  ? `${session?.hostname || hostnameById[session?.deviceId]} ${shortDeviceTag(session?.deviceId)}`
+                  : session?.deviceId || "Endpoint"
+              }
+              mode={session?.mode || "screen"}
+              deviceId={session?.deviceId}
+              stillInQueue={!!session}
+              onClose={() => { leaveSession(id); poll(); }}
+            />
+          </div>
+        );
+      })}
 
-      <div className="card" style={{ marginBottom: 16, marginTop: joinedSessionId ? 16 : 0 }}>
+      <div className="card" style={{ marginBottom: 16, marginTop: joinedSessionIds.length > 0 ? 16 : 0 }}>
         <div className="section-head">
           <div>
             <h3 className="section-title">Session Queue</h3>
@@ -218,7 +232,7 @@ export default function RemoteAssist() {
                 const health = healthFromLiveStatus(liveStatusByDevice[s.deviceId]);
                 const waitingRow = (s.peerCount ?? 0) < 2;
                 return (
-                  <tr key={s.id} className={s.deviceId === focusDevice || s.id === joinedSessionId ? "flash" : undefined}>
+                  <tr key={s.id} className={s.deviceId === focusDevice || joinedSessionIds.includes(s.id) ? "flash" : undefined}>
                     <td className="mono" style={{ fontSize: 11.5 }}>
                       <Link to={`/endpoints/${s.deviceId}`} style={{ color: "var(--accent)" }}>{s.deviceId}</Link>
                     </td>
@@ -242,16 +256,23 @@ export default function RemoteAssist() {
                     <td>
                       <button
                         className="btn primary"
-                        onClick={() => setJoinedSessionId(s.id)}
-                        disabled={joinedSessionId === s.id}
+                        onClick={() => joinSession(s.id)}
+                        disabled={joinedSessionIds.includes(s.id)}
                       >
-                        {joinedSessionId === s.id ? "Joined" : "Join"}
+                        {joinedSessionIds.includes(s.id) ? "Joined" : "Join"}
                       </button>
                     </td>
                   </tr>
                 );
               })}
-              {sessions.length === 0 && (
+              {queueError && (
+                <tr>
+                  <td colSpan={7} className="empty-note" style={{ color: "var(--red)" }}>
+                    Couldn't refresh the session queue: {queueError}
+                  </td>
+                </tr>
+              )}
+              {!queueError && sessions.length === 0 && (
                 <tr>
                   <td colSpan={7} className="empty-note">
                     No active remote assist requests. When an endpoint taps Share, it appears here within a couple of seconds.
