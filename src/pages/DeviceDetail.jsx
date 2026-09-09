@@ -133,7 +133,10 @@ const HEALTH_SCORE_DIMENSIONS = [
 
 // PRD §9 Self-Healing v1 remote dispatch - matches backend/device_commands.go's
 // knownRemediationActions and telemetry-server.mjs's REMEDIATION_ACTIONS keys exactly.
-const REMEDIATION_ACTIONS = [
+// Exported so ActionCenter's own "Dispatch remediation" quick-action reuses this exact list
+// instead of a second, independently-hardcoded copy - same reasoning as Incidents.jsx exporting
+// STATUS_LABELS/STATUS_TONE/OPEN_STATUSES for DeviceDetail's own incident table.
+export const REMEDIATION_ACTIONS = [
   { id: "flush-dns", label: "Flush DNS Cache" },
   { id: "clean-temp", label: "Clean Temp Files" },
   { id: "restart-service", label: "Restart Print Spooler" },

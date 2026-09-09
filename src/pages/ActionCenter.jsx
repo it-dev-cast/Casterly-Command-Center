@@ -4,6 +4,7 @@ import { AlertTriangle, ClipboardCheck, ShieldAlert, Bell, ArrowRight, Siren, Sp
 import StatCard from "../components/StatCard.jsx";
 import EventDetailPanel from "../components/EventDetailPanel.jsx";
 import { useLiveData, healthFromLiveStatus } from "../context/LiveDataContext.jsx";
+import { useDialog } from "../context/DialogContext.jsx";
 import { useRefetchOnEvent, isIncidentEvent, isApprovalEvent } from "../hooks/useRefetchOnEvent.js";
 import { api } from "../lib/api.js";
 import { predictDeviceHealth } from "../lib/prediction.js";
@@ -11,6 +12,7 @@ import { parseHardwareChanges } from "../lib/hardwareEvents.js";
 import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import { shortDeviceTag } from "../lib/deviceId.js";
 import { STATUS_LABELS, STATUS_TONE, OPEN_STATUSES } from "./Incidents.jsx";
+import { REMEDIATION_ACTIONS } from "./DeviceDetail.jsx";
 
 // Small reusable category eyebrow, matching the same uppercase-label convention Sidebar.jsx's
 // own nav-group headers already use (.nav-label in index.css) - not a new visual pattern.
@@ -33,6 +35,7 @@ function timeAgo(iso) {
 // value that isn't traceable to one of api.js's existing real calls.
 export default function ActionCenter() {
   const { token, devices, liveStatusByDevice, events, notifications, pushToast, offlineDeviceIds, offlineDevices } = useLiveData();
+  const { promptAsync } = useDialog();
   const [incidents, setIncidents] = useState([]);
   const [incidentsError, setIncidentsError] = useState(null);
   const [incidentsLoading, setIncidentsLoading] = useState(true);
@@ -44,6 +47,10 @@ export default function ActionCenter() {
   const [aiError, setAiError] = useState(null);
   const [aiLoading, setAiLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [busyIncidentId, setBusyIncidentId] = useState(null);
+  const [remediationChoice, setRemediationChoice] = useState({}); // deviceId -> chosen action id
+  const [busyRemediationDeviceId, setBusyRemediationDeviceId] = useState(null);
+  const [promotingKey, setPromotingKey] = useState(null); // shared busy-key for both promote-to-incident actions below
 
   function refreshIncidents() {
     if (!token) return;
@@ -129,6 +136,62 @@ export default function ActionCenter() {
     }
   }
 
+  // Incidents table quick-actions - same two-step real transition IncidentDetail.jsx's own
+  // status buttons already drive, just the two earliest ones (open -> acknowledged ->
+  // investigating). Anything further along (customer_contacted and later) has no quick action
+  // here - open the incident itself for those, same as this table already links to.
+  async function handleUpdateIncidentStatus(id, status) {
+    setBusyIncidentId(id);
+    try {
+      await api.updateIncidentStatus(token, id, status);
+      refreshIncidents();
+      pushToast("success", "Incident updated", `Marked ${STATUS_LABELS[status]}.`);
+    } catch (e) {
+      pushToast("error", "Update failed", e.message);
+    } finally {
+      setBusyIncidentId(null);
+    }
+  }
+
+  // Devices Needing Attention quick-action - same real dispatch Device 360's own remediation
+  // buttons already use (api.enqueueCommand), just a compact dropdown+button for a table row
+  // instead of a full button grid - there's no room here for six buttons per row. Device 360
+  // still owns the richer "Pending…" tracking; this just queues and toasts.
+  async function handleDispatchRemediation(deviceId) {
+    const action = remediationChoice[deviceId] || REMEDIATION_ACTIONS[0].id;
+    setBusyRemediationDeviceId(deviceId);
+    try {
+      await api.enqueueCommand(token, deviceId, action);
+      pushToast("success", "Command queued", "The device will pick this up on its next check-in.");
+    } catch (e) {
+      if (e.status === 409) {
+        pushToast("error", "Already pending", "This device already has a command awaiting pickup or execution.");
+      } else {
+        pushToast("error", "Failed to queue command", e.message);
+      }
+    } finally {
+      setBusyRemediationDeviceId(null);
+    }
+  }
+
+  // Shared "Promote to Incident" - same real api.createIncident call and promptAsync title
+  // prompt Alerts.jsx's own handleCreateIncident already established; reused verbatim here for
+  // both Hardware Changes and AI Signals rows rather than a third independent implementation.
+  async function handlePromoteToIncident(key, { deviceId, sourceEventId, defaultTitle, severity }) {
+    const title = await promptAsync("Incident title:", defaultTitle);
+    if (!title) return;
+    setPromotingKey(key);
+    try {
+      await api.createIncident(token, { deviceId, sourceEventId, title, severity });
+      refreshIncidents();
+      pushToast("success", "Incident created", `"${title}" — check the Incidents page.`);
+    } catch (e) {
+      pushToast("error", "Incident creation failed", e.message);
+    } finally {
+      setPromotingKey(null);
+    }
+  }
+
   const withHealth = devices.map((d) => ({ ...d, health: deviceHealthDisplay(healthFromLiveStatus(liveStatusByDevice[d.id]), offlineDeviceIds.has(d.id)) }));
   const attentionDevices = withHealth.filter((d) => d.status === "active" && (d.health === "warning" || d.health === "critical"))
     .sort((a, b) => (a.health === "critical" ? -1 : 1) - (b.health === "critical" ? -1 : 1));
@@ -191,7 +254,7 @@ export default function ActionCenter() {
         </div>
         <div className="table-scroll">
           <table className="data-table">
-            <thead><tr><th>Title</th><th>Severity</th><th>Status</th><th>Opened</th></tr></thead>
+            <thead><tr><th>Title</th><th>Severity</th><th>Status</th><th>Opened</th><th>Actions</th></tr></thead>
             <tbody>
               {!incidentsLoading && incidents.map((i) => (
                 <tr key={i.id}>
@@ -199,11 +262,19 @@ export default function ActionCenter() {
                   <td><span className={`badge ${i.severity === "critical" ? "red" : "amber"}`}>{i.severity}</span></td>
                   <td><span className={`badge ${STATUS_TONE[i.status]}`}>{STATUS_LABELS[i.status]}</span></td>
                   <td className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{timeAgo(i.createdAt)}</td>
+                  <td>
+                    {i.status === "open" && (
+                      <button className="btn" disabled={busyIncidentId === i.id} onClick={() => handleUpdateIncidentStatus(i.id, "acknowledged")}>Acknowledge</button>
+                    )}
+                    {i.status === "acknowledged" && (
+                      <button className="btn" disabled={busyIncidentId === i.id} onClick={() => handleUpdateIncidentStatus(i.id, "investigating")}>Start Investigating</button>
+                    )}
+                  </td>
                 </tr>
               ))}
-              {incidentsLoading && <tr><td colSpan={4} className="empty-note">Loading incidents…</td></tr>}
-              {!incidentsLoading && incidentsError && <tr><td colSpan={4} className="empty-note" style={{ color: "var(--red)" }}>Couldn't load incidents: {incidentsError}</td></tr>}
-              {!incidentsLoading && !incidentsError && incidents.length === 0 && <tr><td colSpan={4} className="empty-note">No open incidents — the fleet is quiet.</td></tr>}
+              {incidentsLoading && <tr><td colSpan={5} className="empty-note">Loading incidents…</td></tr>}
+              {!incidentsLoading && incidentsError && <tr><td colSpan={5} className="empty-note" style={{ color: "var(--red)" }}>Couldn't load incidents: {incidentsError}</td></tr>}
+              {!incidentsLoading && !incidentsError && incidents.length === 0 && <tr><td colSpan={5} className="empty-note">No open incidents — the fleet is quiet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -254,7 +325,7 @@ export default function ActionCenter() {
         </div>
         <div className="table-scroll">
           <table className="data-table">
-            <thead><tr><th>Device</th><th>Component</th><th>Change</th><th>Detected</th></tr></thead>
+            <thead><tr><th>Device</th><th>Component</th><th>Change</th><th>Detected</th><th>Actions</th></tr></thead>
             <tbody>
               {hardwareChangeRows.slice(0, 8).map((r) => (
                 <tr key={r.key} onClick={() => setSelectedEvent(r.event)} style={{ cursor: "pointer" }}>
@@ -264,9 +335,26 @@ export default function ActionCenter() {
                     <span style={{ color: "var(--text-faint)" }}>{r.baseline || "—"}</span> → {r.current || "—"}
                   </td>
                   <td className="mono" style={{ fontSize: 11.5, color: "var(--text-faint)" }}>{timeAgo(r.event.createdAt)}</td>
+                  <td>
+                    <button
+                      className="btn"
+                      disabled={promotingKey === r.key}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePromoteToIncident(r.key, {
+                          deviceId: r.event.deviceId,
+                          sourceEventId: r.event.id,
+                          defaultTitle: `Hardware change: ${r.field} on ${r.event.deviceId}`,
+                          severity: r.event.severity,
+                        });
+                      }}
+                    >
+                      {promotingKey === r.key ? "Creating…" : "Promote to Incident"}
+                    </button>
+                  </td>
                 </tr>
               ))}
-              {hardwareChangeRows.length === 0 && <tr><td colSpan={4} className="empty-note">No hardware changes detected across the fleet.</td></tr>}
+              {hardwareChangeRows.length === 0 && <tr><td colSpan={5} className="empty-note">No hardware changes detected across the fleet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -279,15 +367,29 @@ export default function ActionCenter() {
           <p className="section-sub">Active devices currently reporting warning or critical health</p>
           <div className="table-scroll">
             <table className="data-table">
-              <thead><tr><th>Device</th><th>Health</th></tr></thead>
+              <thead><tr><th>Device</th><th>Health</th><th>Actions</th></tr></thead>
               <tbody>
                 {attentionDevices.map((d) => (
                   <tr key={d.id}>
                     <td><Link to={`/endpoints/${d.id}`} style={{ color: "var(--accent)" }}>{d.hostname}</Link> <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(d.id)}</span></td>
                     <td><span className={`badge ${d.health === "critical" ? "red" : "amber"}`}>{d.health}</span></td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <select
+                          className="pill-select"
+                          value={remediationChoice[d.id] || REMEDIATION_ACTIONS[0].id}
+                          onChange={(e) => setRemediationChoice((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                        >
+                          {REMEDIATION_ACTIONS.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+                        </select>
+                        <button className="btn" disabled={busyRemediationDeviceId === d.id} onClick={() => handleDispatchRemediation(d.id)}>
+                          {busyRemediationDeviceId === d.id ? "Queuing…" : "Dispatch"}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
-                {attentionDevices.length === 0 && <tr><td colSpan={2} className="empty-note">All active devices are healthy.</td></tr>}
+                {attentionDevices.length === 0 && <tr><td colSpan={3} className="empty-note">All active devices are healthy.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -347,20 +449,36 @@ export default function ActionCenter() {
         </p>
         <div className="table-scroll">
           <table className="data-table">
-            <thead><tr><th>Device</th><th>Metric</th><th>Days Remaining</th><th>Risk</th><th>Confidence</th></tr></thead>
+            <thead><tr><th>Device</th><th>Metric</th><th>Days Remaining</th><th>Risk</th><th>Confidence</th><th>Actions</th></tr></thead>
             <tbody>
-              {!aiLoading && aiSignals.map((s, i) => (
-                <tr key={`${s.device.id}-${s.metric}-${i}`}>
-                  <td><Link to={`/endpoints/${s.device.id}`} style={{ color: "var(--accent)" }}>{s.device.hostname}</Link> <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(s.device.id)}</span></td>
-                  <td>{s.metric === "Battery Health" ? <TrendingDown size={13} style={{ marginRight: 5, verticalAlign: "middle" }} /> : <TrendingUp size={13} style={{ marginRight: 5, verticalAlign: "middle" }} />}{s.metric}</td>
-                  <td className="mono">{s.daysRemaining}d</td>
-                  <td><span className="badge red">{s.risk}</span></td>
-                  <td><span className={`badge ${s.confidence === "high" ? "green" : "gray"}`}>{s.confidence === "high" ? "High" : "Low"}</span></td>
-                </tr>
-              ))}
-              {aiLoading && <tr><td colSpan={5} className="empty-note">Computing real per-device predictions…</td></tr>}
-              {!aiLoading && aiError && <tr><td colSpan={5} className="empty-note" style={{ color: "var(--red)" }}>Couldn't load some AI predictions: {aiError}</td></tr>}
-              {!aiLoading && !aiError && aiSignals.length === 0 && <tr><td colSpan={5} className="empty-note">No devices currently show elevated hardware risk (or not enough snapshot history yet to project).</td></tr>}
+              {!aiLoading && aiSignals.map((s, i) => {
+                const key = `${s.device.id}-${s.metric}-${i}`;
+                return (
+                  <tr key={key}>
+                    <td><Link to={`/endpoints/${s.device.id}`} style={{ color: "var(--accent)" }}>{s.device.hostname}</Link> <span style={{ color: "var(--text-faint)", fontSize: 11 }}>{shortDeviceTag(s.device.id)}</span></td>
+                    <td>{s.metric === "Battery Health" ? <TrendingDown size={13} style={{ marginRight: 5, verticalAlign: "middle" }} /> : <TrendingUp size={13} style={{ marginRight: 5, verticalAlign: "middle" }} />}{s.metric}</td>
+                    <td className="mono">{s.daysRemaining}d</td>
+                    <td><span className="badge red">{s.risk}</span></td>
+                    <td><span className={`badge ${s.confidence === "high" ? "green" : "gray"}`}>{s.confidence === "high" ? "High" : "Low"}</span></td>
+                    <td>
+                      <button
+                        className="btn"
+                        disabled={promotingKey === key}
+                        onClick={() => handlePromoteToIncident(key, {
+                          deviceId: s.device.id,
+                          defaultTitle: `${s.metric} at High risk (${s.daysRemaining}d remaining) on ${s.device.id}`,
+                          severity: "warning",
+                        })}
+                      >
+                        {promotingKey === key ? "Creating…" : "Promote to Incident"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {aiLoading && <tr><td colSpan={6} className="empty-note">Computing real per-device predictions…</td></tr>}
+              {!aiLoading && aiError && <tr><td colSpan={6} className="empty-note" style={{ color: "var(--red)" }}>Couldn't load some AI predictions: {aiError}</td></tr>}
+              {!aiLoading && !aiError && aiSignals.length === 0 && <tr><td colSpan={6} className="empty-note">No devices currently show elevated hardware risk (or not enough snapshot history yet to project).</td></tr>}
             </tbody>
           </table>
         </div>
