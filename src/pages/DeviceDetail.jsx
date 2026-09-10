@@ -837,8 +837,20 @@ export default function DeviceDetail() {
             <StatCard icon={Cpu} tone={toneIfLive(usageTone(liveStatus?.cpuPct, CPU_USAGE_THRESHOLDS))} value={dash(liveStatus?.cpuPct, "%")} label="CPU" meta={detail.cpuName} live={liveDot} />
             <StatCard icon={MemoryStick} tone={toneIfLive(usageTone(liveStatus?.ramPct, RAM_USAGE_THRESHOLDS))} value={dash(liveStatus?.ramPct, "%")} label="RAM" meta={detail.memTotalGB != null ? `${detail.memTotalGB} GB` : null} live={liveDot} />
             <StatCard icon={HardDrive} tone={toneIfLive(usageTone(liveStatus?.diskPct, DISK_USAGE_THRESHOLDS))} value={dash(liveStatus?.diskPct, "%")} label="Disk" meta={detail.diskFreeGB != null ? `${detail.diskFreeGB} GB free` : null} live={liveDot} />
-            <StatCard icon={BatteryCharging} tone={toneIfLive(batteryTone(liveStatus?.batteryPct))} value={dash(liveStatus?.batteryPct, "%")} label="Charge" live={liveDot} />
-            <StatCard icon={BatteryMedium} tone={toneIfLive(batteryHealthTone(batteryHealthPct))} value={dash(batteryHealthPct, "%")} label="Battery Health" live={liveDot && detail.batteryHealthPct != null} />
+            {/* Genuinely-unavailable metrics below are omitted entirely rather than shown as a
+                dead "—" tile - same convention as the endpoint app's Fan RPM/Battery Temp gaps
+                (see the Battery Cycles comment). Plain grid auto-flow (index.css .grid-3) reflows
+                the remaining tiles with no leftover gaps, so no extra layout fix is needed here.
+                Security is the one exception: it's a computed score, not a hardware sensor, so a
+                null here just means "not computed yet" - always shown, tone stays gray (the same
+                neutral/loading look every other still-connecting tile on this page uses) until a
+                real score exists. */}
+            {liveStatus?.batteryPct != null && (
+              <StatCard icon={BatteryCharging} tone={toneIfLive(batteryTone(liveStatus?.batteryPct))} value={dash(liveStatus?.batteryPct, "%")} label="Charge" live={liveDot} />
+            )}
+            {batteryHealthPct != null && (
+              <StatCard icon={BatteryMedium} tone={toneIfLive(batteryHealthTone(batteryHealthPct))} value={dash(batteryHealthPct, "%")} label="Battery Health" live={liveDot && detail.batteryHealthPct != null} />
+            )}
             {/* Real battery cycle count - but only when rust's own independent reading
                 corroborates the concept is supported on this hardware (see telemetry-server.mjs's
                 collect() merge comment): root/wmi's raw BatteryCycleCount is cross-validated as
@@ -849,8 +861,12 @@ export default function DeviceDetail() {
                 machine via two independent sources (LibreHardwareMonitor and rust's own Windows
                 Battery API), a genuine hardware ceiling, same category as this project's known
                 fan-RPM gap. */}
-            <StatCard icon={RotateCw} tone={toneIfLive(detail.batteryCycleCount == null ? "gray" : "teal")} value={dash(detail.batteryCycleCount)} label="Battery Cycles" live={liveDot && detail.batteryCycleCount != null} />
-            <StatCard icon={Disc} tone={toneIfLive(ssdWearTone(ssdWearPct))} value={dash(ssdWearPct, "%")} label="SSD Wear" live={liveDot && detail.storageWearPct != null} />
+            {detail.batteryCycleCount != null && (
+              <StatCard icon={RotateCw} tone={toneIfLive("teal")} value={dash(detail.batteryCycleCount)} label="Battery Cycles" live={liveDot} />
+            )}
+            {ssdWearPct != null && (
+              <StatCard icon={Disc} tone={toneIfLive(ssdWearTone(ssdWearPct))} value={dash(ssdWearPct, "%")} label="SSD Wear" live={liveDot && detail.storageWearPct != null} />
+            )}
             {/* Real NVMe media_errors/critical_warning from nvme_smart_health_information_log -
                 NVMe has no ATA-style Reallocated_Sector_Ct equivalent (confirmed directly against
                 a real smartctl -a -j -d nvme run - no such field exists on this protocol, not
@@ -859,17 +875,27 @@ export default function DeviceDetail() {
                 the controller's own 5-bit health bitmask, decoded to text below. Neither is folded
                 into the composite Health Score - same "visible and honest first" scope as
                 BIOS/Windows Update/Domain-MDM above. */}
-            <StatCard icon={AlertTriangle} tone={toneIfLive(detail.storageMediaErrors == null ? "gray" : detail.storageMediaErrors > 0 ? "red" : "green")} value={dash(detail.storageMediaErrors)} label="Media Errors" live={liveDot && detail.storageMediaErrors != null} />
-            <StatCard
-              icon={detail.storageCriticalWarning == null ? Shield : detail.storageCriticalWarning === 0 ? ShieldCheck : ShieldAlert}
-              tone={toneIfLive(detail.storageCriticalWarning == null ? "gray" : detail.storageCriticalWarning === 0 ? "green" : "red")}
-              value={decodeNvmeCriticalWarning(detail.storageCriticalWarning) ?? "—"}
-              label="Drive Health"
-              live={liveDot && detail.storageCriticalWarning != null}
-            />
-            <StatCard icon={Thermometer} tone={toneIfLive(detail.cpuTempC == null ? "gray" : detail.cpuTempC >= 85 ? "red" : "teal")} value={detail.cpuTempC != null ? `${Math.round(detail.cpuTempC)}°C` : "—"} label="CPU Temp" live={liveDot && detail.cpuTempC != null} />
-            <StatCard icon={Gpu} tone={toneIfLive(detail.gpuUtilPct == null ? "gray" : "purple")} value={dash(detail.gpuUtilPct, "%")} label="GPU" meta={detail.gpuName} live={liveDot && detail.gpuUtilPct != null} />
-            <StatCard icon={Thermometer} tone={toneIfLive(detail.gpuTempC == null ? "gray" : "purple")} value={detail.gpuTempC != null ? `${Math.round(detail.gpuTempC)}°C` : "—"} label="GPU Temp" live={liveDot && detail.gpuTempC != null} />
+            {detail.storageMediaErrors != null && (
+              <StatCard icon={AlertTriangle} tone={toneIfLive(detail.storageMediaErrors > 0 ? "red" : "green")} value={dash(detail.storageMediaErrors)} label="Media Errors" live={liveDot} />
+            )}
+            {detail.storageCriticalWarning != null && (
+              <StatCard
+                icon={detail.storageCriticalWarning === 0 ? ShieldCheck : ShieldAlert}
+                tone={toneIfLive(detail.storageCriticalWarning === 0 ? "green" : "red")}
+                value={decodeNvmeCriticalWarning(detail.storageCriticalWarning) ?? "—"}
+                label="Drive Health"
+                live={liveDot}
+              />
+            )}
+            {detail.cpuTempC != null && (
+              <StatCard icon={Thermometer} tone={toneIfLive(detail.cpuTempC >= 85 ? "red" : "teal")} value={`${Math.round(detail.cpuTempC)}°C`} label="CPU Temp" live={liveDot} />
+            )}
+            {detail.gpuUtilPct != null && (
+              <StatCard icon={Gpu} tone={toneIfLive("purple")} value={dash(detail.gpuUtilPct, "%")} label="GPU" meta={detail.gpuName} live={liveDot} />
+            )}
+            {detail.gpuTempC != null && (
+              <StatCard icon={Thermometer} tone={toneIfLive("purple")} value={`${Math.round(detail.gpuTempC)}°C`} label="GPU Temp" live={liveDot} />
+            )}
             <StatCard icon={Shield} tone={toneIfLive(detail.securityHealthPct == null ? "gray" : detail.securityHealthPct === 100 ? "green" : "amber")} value={dash(detail.securityHealthPct, "%")} label="Security" live={liveDot && detail.securityHealthPct != null} />
           </div>
           {!liveStatus && <div className="empty-note" style={{ marginTop: 12 }}>No live telemetry received from this device yet.</div>}
