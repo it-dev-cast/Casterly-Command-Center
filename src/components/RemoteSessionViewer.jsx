@@ -289,7 +289,17 @@ export default function RemoteSessionViewer({ sessionId, onClose, hostname, mode
     const ws = new WebSocket(`${toWsUrl(BACKEND_URL)}/v1/remote-sessions/${sessionId}/ws`);
     wsRef.current = ws;
     setSignaling("connecting");
-    ws.onopen = () => setSignaling("open");
+    // Real missing half of the consent-gate handshake (found live: the endpoint's own
+    // ScreenSharePOC.tsx has listened for {type:"join-request"} since e02c651/fc8751f, but
+    // nothing on this side ever sent one - the backend's WS relay is a dumb byte-forwarder with
+    // no message-type awareness of its own, see remote_session.go's own relay loop, so this
+    // announcement has to come from here). Sent immediately on open, before any offer/answer -
+    // this unblocks the customer's Approve/Deny banner, which is the only path that ever calls
+    // approveJoinRequest() and creates the real offer this component is waiting for below.
+    ws.onopen = () => {
+      setSignaling("open");
+      ws.send(JSON.stringify({ type: "join-request" }));
+    };
     // Real distinction (not guessed) - checkSessionExists tells "this session genuinely ended"
     // apart from "can't reach the backend right now," which a raw WebSocket close/error alone
     // can't (no reconnect added here on purpose - an operator can just click Join again from
