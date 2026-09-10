@@ -11,7 +11,7 @@ import { useDialog } from "../context/DialogContext.jsx";
 import { api } from "../lib/api.js";
 import { predictDeviceHealth } from "../lib/prediction.js";
 import { latestBatteryHealthPct, latestSsdWearPct, batteryHealthTone, ssdWearTone } from "../lib/batteryHealth.js";
-import { getLiveDetail, dash, onOff, liveBatteryHealthPct, liveSsdWearPct, formatEventLine } from "../lib/liveDetail.js";
+import { getLiveDetail, dash, onOff, liveBatteryHealthPct, liveSsdWearPct, formatEventLine, isActionable } from "../lib/liveDetail.js";
 import { parseHardwareChanges } from "../lib/hardwareEvents.js";
 import { deviceHealthDisplay } from "../lib/deviceLiveness.js";
 import { computeDeviceHealthScore, healthScoreTone, getThermalInfo, HEALTH_SCORE_WEIGHTS } from "../lib/deviceHealthScore.js";
@@ -838,34 +838,32 @@ export default function DeviceDetail() {
             <StatCard icon={MemoryStick} tone={toneIfLive(usageTone(liveStatus?.ramPct, RAM_USAGE_THRESHOLDS))} value={dash(liveStatus?.ramPct, "%")} label="RAM" meta={detail.memTotalGB != null ? `${detail.memTotalGB} GB` : null} live={liveDot} />
             <StatCard icon={HardDrive} tone={toneIfLive(usageTone(liveStatus?.diskPct, DISK_USAGE_THRESHOLDS))} value={dash(liveStatus?.diskPct, "%")} label="Disk" meta={detail.diskFreeGB != null ? `${detail.diskFreeGB} GB free` : null} live={liveDot} />
             {/* Genuinely-unavailable metrics below are omitted entirely rather than shown as a
-                dead "—" tile - same convention as the endpoint app's Fan RPM/Battery Temp gaps
-                (see the Battery Cycles comment). Plain grid auto-flow (index.css .grid-3) reflows
-                the remaining tiles with no leftover gaps, so no extra layout fix is needed here.
-                Security is the one exception: it's a computed score, not a hardware sensor, so a
-                null here just means "not computed yet" - always shown, tone stays gray (the same
-                neutral/loading look every other still-connecting tile on this page uses) until a
-                real score exists. */}
+                dead "—" tile - same convention as the endpoint app's Fan RPM gap. Plain grid
+                auto-flow (index.css .grid-3) reflows the remaining tiles with no leftover gaps,
+                so no extra layout fix is needed here. Security is the one exception: it's a
+                computed score, not a hardware sensor, so a null here just means "not computed
+                yet" - always shown, tone stays gray (the same neutral/loading look every other
+                still-connecting tile on this page uses) until a real score exists.
+
+                Sensor self-diagnostic system: a null with an ACTIONABLE reason (tool not found,
+                needs elevation, a placeholder sentinel value, an implausible reading discarded)
+                stays visible as a dash + hoverable info icon instead of disappearing - only a
+                genuine hardware-unsupported ceiling (no NVMe drive, no cycle-count-capable EC)
+                still hides the tile entirely, same as before. */}
             {liveStatus?.batteryPct != null && (
               <StatCard icon={BatteryCharging} tone={toneIfLive(batteryTone(liveStatus?.batteryPct))} value={dash(liveStatus?.batteryPct, "%")} label="Charge" live={liveDot} />
             )}
             {batteryHealthPct != null && (
               <StatCard icon={BatteryMedium} tone={toneIfLive(batteryHealthTone(batteryHealthPct))} value={dash(batteryHealthPct, "%")} label="Battery Health" live={liveDot && detail.batteryHealthPct != null} />
             )}
-            {/* Real battery cycle count - but only when rust's own independent reading
-                corroborates the concept is supported on this hardware (see telemetry-server.mjs's
-                collect() merge comment): root/wmi's raw BatteryCycleCount is cross-validated as
-                unreliable on this exact real machine (a "0" with no error, for a battery already
-                at 44% design-capacity wear - implausible for a genuinely 0-cycle battery), so a
-                null here means "unverifiable on this hardware," not "definitely zero." Battery
-                temperature is deliberately NOT surfaced anywhere - confirmed absent on this real
-                machine via two independent sources (LibreHardwareMonitor and rust's own Windows
-                Battery API), a genuine hardware ceiling, same category as this project's known
-                fan-RPM gap. */}
-            {detail.batteryCycleCount != null && (
-              <StatCard icon={RotateCw} tone={toneIfLive("teal")} value={dash(detail.batteryCycleCount)} label="Battery Cycles" live={liveDot} />
+            {(detail.batteryCycleCount != null || isActionable(detail.batteryCycleCountReason)) && (
+              <StatCard icon={RotateCw} tone={toneIfLive(detail.batteryCycleCount != null ? "teal" : "gray")} value={dash(detail.batteryCycleCount)} label="Battery Cycles" live={liveDot} reason={detail.batteryCycleCountReason} />
             )}
-            {ssdWearPct != null && (
-              <StatCard icon={Disc} tone={toneIfLive(ssdWearTone(ssdWearPct))} value={dash(ssdWearPct, "%")} label="SSD Wear" live={liveDot && detail.storageWearPct != null} />
+            {(detail.batteryTemperatureC != null || isActionable(detail.batteryTemperatureCReason)) && (
+              <StatCard icon={Thermometer} tone={toneIfLive(detail.batteryTemperatureC != null ? "teal" : "gray")} value={detail.batteryTemperatureC != null ? `${Math.round(detail.batteryTemperatureC)}°C` : "—"} label="Battery Temp" live={liveDot} reason={detail.batteryTemperatureCReason} />
+            )}
+            {(ssdWearPct != null || isActionable(detail.storageWearPctReason)) && (
+              <StatCard icon={Disc} tone={toneIfLive(ssdWearPct != null ? ssdWearTone(ssdWearPct) : "gray")} value={dash(ssdWearPct, "%")} label="SSD Wear" live={liveDot && detail.storageWearPct != null} reason={detail.storageWearPctReason} />
             )}
             {/* Real NVMe media_errors/critical_warning from nvme_smart_health_information_log -
                 NVMe has no ATA-style Reallocated_Sector_Ct equivalent (confirmed directly against
@@ -875,16 +873,17 @@ export default function DeviceDetail() {
                 the controller's own 5-bit health bitmask, decoded to text below. Neither is folded
                 into the composite Health Score - same "visible and honest first" scope as
                 BIOS/Windows Update/Domain-MDM above. */}
-            {detail.storageMediaErrors != null && (
-              <StatCard icon={AlertTriangle} tone={toneIfLive(detail.storageMediaErrors > 0 ? "red" : "green")} value={dash(detail.storageMediaErrors)} label="Media Errors" live={liveDot} />
+            {(detail.storageMediaErrors != null || isActionable(detail.storageMediaErrorsReason)) && (
+              <StatCard icon={AlertTriangle} tone={toneIfLive(detail.storageMediaErrors != null ? (detail.storageMediaErrors > 0 ? "red" : "green") : "gray")} value={dash(detail.storageMediaErrors)} label="Media Errors" live={liveDot} reason={detail.storageMediaErrorsReason} />
             )}
-            {detail.storageCriticalWarning != null && (
+            {(detail.storageCriticalWarning != null || isActionable(detail.storageCriticalWarningReason)) && (
               <StatCard
-                icon={detail.storageCriticalWarning === 0 ? ShieldCheck : ShieldAlert}
-                tone={toneIfLive(detail.storageCriticalWarning === 0 ? "green" : "red")}
+                icon={detail.storageCriticalWarning == null ? Shield : detail.storageCriticalWarning === 0 ? ShieldCheck : ShieldAlert}
+                tone={toneIfLive(detail.storageCriticalWarning == null ? "gray" : detail.storageCriticalWarning === 0 ? "green" : "red")}
                 value={decodeNvmeCriticalWarning(detail.storageCriticalWarning) ?? "—"}
                 label="Drive Health"
                 live={liveDot}
+                reason={detail.storageCriticalWarningReason}
               />
             )}
             {detail.cpuTempC != null && (

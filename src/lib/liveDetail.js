@@ -11,6 +11,14 @@ export function dash(value, suffix = "") {
   return suffix ? `${value}${suffix}` : String(value);
 }
 
+// Sensor self-diagnostic system: a reason is "actionable" (worth a dash + info icon explaining
+// why) unless its code is the one true hardware-ceiling case - this hardware genuinely doesn't
+// have the sensor/capability at all, which stays a fully-omitted tile instead, same as a null
+// with no reason attached.
+export function isActionable(reason) {
+  return reason != null && reason.code !== "hardware-unsupported";
+}
+
 export function onOff(value) {
   if (value == null) return "—";
   return value ? "On" : "Off";
