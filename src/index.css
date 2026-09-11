@@ -950,7 +950,21 @@ select:focus-visible,
   border-radius: 999px; padding: 1px 5px;
 }
 
-.page-content { padding: 22px 28px 60px; max-width: 1500px; position: relative; z-index: 1; }
+/* Single source of truth for the page-content box model - previously declared twice (this rule,
+   then silently overridden by a second "Display pass" declaration further down with different
+   padding/max-width), so which value actually applied was never obvious from reading either
+   declaration alone. margin: 0 auto centers the capped column on wide viewports instead of
+   leaving it flush against the sidebar with all spare width piling up on one side - previously
+   unset, so centering only ever happened by accident of block flow (i.e. never, in practice).
+   width: 100% is required alongside it, not decorative: .page-content is a flex item of
+   .main-area (display:flex; flex-direction:column), and per the flexbox spec, auto cross-axis
+   margins on a flex item whose own width computes to auto make it shrink-to-fit and center in
+   the leftover space INSTEAD of stretching to fill the container first - confirmed directly (a
+   build without this line measured .page-content at ~750-780px wide on both 1920px and 5120px
+   viewports, never reaching max-width at all). width: 100% removes the auto-sizing that rule
+   triggers on, so the element stretches to .main-area's full width and max-width/margin then cap
+   and center it normally, the way they would on a plain block element. */
+.page-content { width: 100%; margin: 0 auto; padding: 24px 28px 64px; max-width: 1600px; position: relative; z-index: 1; }
 
 .page-title { font-family: var(--font-display); font-size: 26px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.03em; }
 .page-sub { color: var(--text-dim); font-size: 13.5px; margin: 0 0 20px; }
@@ -963,6 +977,30 @@ select:focus-visible,
 .grid-5 { grid-template-columns: repeat(5, 1fr); }
 .grid-split { grid-template-columns: 1.4fr 1fr; }
 @media (max-width: 1200px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } .grid-3 { grid-template-columns: repeat(2,1fr);} .grid-5 { grid-template-columns: repeat(3, 1fr); } .grid-split { grid-template-columns: 1fr; } .grid-2 { grid-template-columns: 1fr; } }
+
+/* Genuinely wide displays (2560/2K ultrawide, 3440, 3840/4K, 5120/5K and up) - confirmed directly
+   on a 5120x2160 display that the 1600px cap above left several thousand px of dead space, with
+   .grid-3/.grid-4/.grid-5's fixed column counts unable to use any of it. 2400px here is a
+   considered ceiling, not a placeholder or an attempt at the full viewport width - a data
+   dashboard's chart/text readability degrades well before genuinely filling a 5K screen, so this
+   still leaves real margin even at 5120px on purpose.
+   The three grids switch from a fixed repeat(N, 1fr) to auto-fit/minmax here instead of just
+   raising N: a literal higher column count would leave a dangling empty track on any page whose
+   grid holds a genuinely fixed, smaller set of cards (e.g. exactly 3 or 4 named metrics) -
+   auto-fit only ever creates as many tracks as there are real children (collapsing any extra to 0
+   width, letting the real ones stretch via the trailing 1fr), so a fixed-count grid just gets
+   comfortably wider cards, while a page whose grid holds a variable-length list naturally spreads
+   into more columns - both without touching any individual page. The minmax() lower bounds below
+   land on roughly this grid's own existing per-card width at 1600px (not smaller), so a fixed set
+   grows into wider cards rather than cramming in artificially narrow ones. .glance-strip gets the
+   same treatment further down, next to its own existing responsive breakpoints, since its base
+   rule lives later in this file and would otherwise win the cascade back over this block. */
+@media (min-width: 2400px) {
+  .page-content { max-width: 2400px; }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); }
+  .grid-4 { grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
+  .grid-5 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+}
 
 .card {
   background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
@@ -1368,7 +1406,6 @@ select:focus-visible,
 .nav-label { padding: 12px 10px 4px; }
 .search-box { max-width: 520px; padding: 9px 14px; border-radius: 999px; }
 .search-box:focus-within { border-color: var(--accent); color: var(--text); }
-.page-content { padding: 24px 28px 64px; max-width: 1600px; }
 .page-title { font-size: 28px; letter-spacing: -0.03em; }
 
 .dash-kicker {
@@ -1834,6 +1871,15 @@ select:focus-visible,
   .glance-strip { grid-template-columns: repeat(3, 1fr); }
   .jump-strip { grid-template-columns: 1fr; }
   .event-feed-row { grid-template-columns: 10px minmax(0, 1fr) 120px; }
+}
+/* Same wide-display treatment as .grid-3/.grid-4/.grid-5 above (see that block's own comment for
+   the full reasoning) - placed here, next to this class's own existing breakpoints, rather than
+   with the others: .glance-strip's base rule (grid-template-columns: repeat(5, 1fr)) is declared
+   later in this file than that block, so an override placed there would lose the cascade back to
+   this class's own base rule the moment it's declared below - source order, not just specificity,
+   decides ties. */
+@media (min-width: 2400px) {
+  .glance-strip { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
 }
 @media (max-width: 720px) {
   .glance-strip { grid-template-columns: repeat(2, 1fr); }
