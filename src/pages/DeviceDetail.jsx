@@ -160,7 +160,7 @@ const TABS = [
 export default function DeviceDetail() {
   const { id } = useParams();
   const { token, devices, liveStatusByDevice, events, connected, revokeDevice, resetFingerprint, warrantyReview, pushToast, offlineDeviceIds, entitlement } = useLiveData();
-  const { confirmAsync } = useDialog();
+  const { confirmAsync, confirmRetypeAsync } = useDialog();
   const [snapshots, setSnapshots] = useState([]);
   const [snapshotsError, setSnapshotsError] = useState(null);
   const [snapshotsLoading, setSnapshotsLoading] = useState(true);
@@ -178,6 +178,24 @@ export default function DeviceDetail() {
   const [remediationPending, setRemediationPending] = useState(null);
   const [remediationSince, setRemediationSince] = useState(null);
   const [remediationResult, setRemediationResult] = useState(null);
+  // Remote command/PowerShell execution - deliberately separate state from the six fixed
+  // remediation actions above (own pending/since/result trio), same reasoning: a real, current
+  // watcher needs its own "since" to avoid reacting to a stale event already in the live buffer.
+  const [remoteCmdSettingEnabled, setRemoteCmdSettingEnabled] = useState(null);
+  const [commandText, setCommandText] = useState("");
+  const [actorLabel, setActorLabel] = useState(() => {
+    try {
+      return localStorage.getItem("casterly_actor_label") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [remoteCmdPending, setRemoteCmdPending] = useState(false);
+  const [remoteCmdSince, setRemoteCmdSince] = useState(null);
+  const [remoteCmdId, setRemoteCmdId] = useState(null);
+  const [remoteCmdResult, setRemoteCmdResult] = useState(null);
+  const [fullOutput, setFullOutput] = useState(null);
+  const [fullOutputLoading, setFullOutputLoading] = useState(false);
   const [busyRequestId, setBusyRequestId] = useState(null);
   const [tab, setTab] = useState("overview");
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
@@ -382,6 +400,98 @@ export default function DeviceDetail() {
     setRemediationPending(null);
     setRemediationSince(null);
   }, [events, remediationPending, remediationSince, id]);
+
+  // Remote command/PowerShell execution's own tenant-level kill switch (backend/settings.go) -
+  // fetched once here (not in LiveDataContext, same self-contained-fetch convention Settings.jsx's
+  // own offline-threshold uses) since it's the second of the two required gates - the first
+  // (entitlement.features' "Remote Command Execution") already comes from useLiveData() above.
+  useEffect(() => {
+    if (!token) return;
+    api.getRemoteCommandExecutionSetting(token)
+      .then((res) => setRemoteCmdSettingEnabled(res.enabled))
+      .catch(() => setRemoteCmdSettingEnabled(false));
+  }, [token]);
+
+  const remoteCommandFeatureIncluded = entitlement?.features?.find((f) => f.feature === "Remote Command Execution")?.included === true;
+  const remoteCommandExecutionVisible = remoteCommandFeatureIncluded && remoteCmdSettingEnabled === true;
+
+  // Same enqueue-then-watch-the-live-events-stream pattern as handleRunRemediation/its own
+  // watcher above - this action's own three event types (remote-command-succeeded/-failed/
+  // -blocked) have no per-action-id suffix, since there's only ever one "action" here.
+  async function handleRunCustomCommand() {
+    const text = commandText.trim();
+    const actor = actorLabel.trim();
+    if (!text) {
+      pushToast("error", "Nothing to run", "Enter a command first.");
+      return;
+    }
+    if (!actor) {
+      pushToast("error", "Name required", "Enter your name/initials for the audit log first - this is not a real login, just a label.");
+      return;
+    }
+    const ok = await confirmRetypeAsync(
+      `Run this command on ${device?.hostname ?? id} (${id}) right now? This runs with full system privilege on that device. Retype it exactly to confirm.`,
+      text,
+      "Run",
+    );
+    if (!ok) return;
+
+    try {
+      localStorage.setItem("casterly_actor_label", actor);
+    } catch {
+      // best-effort only - not having this remembered next time isn't worth failing the dispatch over
+    }
+
+    try {
+      const res = await api.enqueueCommand(token, id, "run-custom-command", { commandText: text, actor });
+      setRemoteCmdId(res.id);
+      setRemoteCmdPending(true);
+      setRemoteCmdSince(new Date());
+      setRemoteCmdResult(null);
+      setFullOutput(null);
+      pushToast("success", "Command queued", "The device will pick this up on its next check-in.");
+    } catch (e) {
+      if (e.status === 409) {
+        pushToast("error", "Already pending", "This device already has a command awaiting pickup or execution.");
+      } else if (e.status === 403) {
+        pushToast("error", "Not enabled", "Remote Command Execution isn't enabled for this tenant.");
+      } else {
+        pushToast("error", "Failed to queue command", e.message);
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!remoteCmdPending || !remoteCmdSince) return;
+    const match = events.find(
+      (e) =>
+        e.deviceId === id &&
+        new Date(e.createdAt) >= remoteCmdSince &&
+        (e.eventType === "remote-command-succeeded" || e.eventType === "remote-command-failed" || e.eventType === "remote-command-blocked"),
+    );
+    if (!match) return;
+    const status = match.eventType === "remote-command-succeeded" ? "Succeeded" : match.eventType === "remote-command-blocked" ? "Blocked" : "Failed";
+    const tone = status === "Succeeded" ? "green" : status === "Blocked" ? "gray" : "red";
+    setRemoteCmdResult({ status, tone, message: match.message });
+    setRemoteCmdPending(false);
+    setRemoteCmdSince(null);
+  }, [events, remoteCmdPending, remoteCmdSince, id]);
+
+  // The event message above is a summary - full stdout/stderr (which can be much larger) only
+  // lives in the device_commands row itself, fetched here on demand rather than round-tripped
+  // through the event feed.
+  async function handleViewFullOutput() {
+    if (!remoteCmdId) return;
+    setFullOutputLoading(true);
+    try {
+      const res = await api.getDeviceCommand(token, id, remoteCmdId);
+      setFullOutput(res.result || "(no output)");
+    } catch (e) {
+      pushToast("error", "Couldn't load full output", e.message);
+    } finally {
+      setFullOutputLoading(false);
+    }
+  }
 
   if (!device) {
     return (
@@ -721,6 +831,75 @@ export default function DeviceDetail() {
               </div>
             )}
           </div>
+
+          {/* Remote command/PowerShell execution - deliberately its OWN card, visually separated
+              from (not folded into) the six-button grid above, and a red-tinted border so it never
+              reads as "just another safe remediation button." Hidden entirely unless BOTH the
+              plan entitlement and this tenant's own explicit settings toggle are on - see this
+              feature's own design note on why a plan change alone must never be enough. */}
+          {remoteCommandExecutionVisible && (
+            <div className="card" style={{ marginBottom: 20, border: "1px solid var(--red)" }}>
+              <h3 className="section-title" style={{ color: "var(--red)" }}>Advanced: Run Command</h3>
+              <p className="section-sub">
+                Runs arbitrary PowerShell with full system privilege on this device. Not one of the six reviewed
+                remediation actions above — there is no safety net here beyond the confirmation step below.
+              </p>
+              <textarea
+                className="search-box"
+                style={{ width: "100%", minHeight: 90, marginTop: 10, fontFamily: "monospace", fontSize: 12.5, border: "1px solid var(--border-soft)" }}
+                placeholder="PowerShell command or script..."
+                value={commandText}
+                onChange={(e) => setCommandText(e.target.value)}
+                disabled={remoteCmdPending}
+              />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                <input
+                  className="search-box"
+                  style={{ width: 220, border: "1px solid var(--border-soft)" }}
+                  placeholder="Your name/initials (for the audit log)"
+                  value={actorLabel}
+                  onChange={(e) => setActorLabel(e.target.value)}
+                  disabled={remoteCmdPending}
+                />
+                <span style={{ fontSize: 11, color: "var(--text-faint)" }}>
+                  Not a real login — just a label stored with this command for later review.
+                </span>
+              </div>
+              <button
+                className="btn primary"
+                style={{ marginTop: 10, background: "var(--red)", borderColor: "var(--red)" }}
+                disabled={remoteCmdPending || !commandText.trim()}
+                onClick={handleRunCustomCommand}
+              >
+                {remoteCmdPending ? "Pending…" : "Run"}
+              </button>
+              {remoteCmdResult && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <span className={`badge ${remoteCmdResult.tone}`}>{remoteCmdResult.status}</span>
+                    <span className="mono" style={{ fontSize: 12, color: "var(--text-faint)", whiteSpace: "pre-wrap" }}>
+                      {remoteCmdResult.message}
+                    </span>
+                  </div>
+                  <button className="btn" style={{ marginTop: 8, fontSize: 12 }} onClick={handleViewFullOutput} disabled={fullOutputLoading}>
+                    {fullOutputLoading ? "Loading…" : "View full output"}
+                  </button>
+                  {fullOutput != null && (
+                    <pre
+                      className="mono"
+                      style={{
+                        marginTop: 8, maxHeight: 300, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word",
+                        background: "var(--bg-soft, #f5f5f5)", border: "1px solid var(--border-soft)", borderRadius: 6,
+                        padding: 10, fontSize: 11.5,
+                      }}
+                    >
+                      {fullOutput}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="card" style={{ marginBottom: 20 }}>
             <h3 className="section-title">Tags</h3>

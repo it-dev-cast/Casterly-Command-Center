@@ -56,8 +56,14 @@ export const api = {
   warrantyReview: (token, deviceId, decision) => request(`/v1/devices/${deviceId}/warranty-review`, { method: "POST", token, body: { decision } }),
   setDeviceTags: (token, deviceId, tags) => request(`/v1/devices/${deviceId}/tags`, { method: "POST", token, body: { tags } }),
   // PRD §9 Self-Healing v1 remote dispatch - real, but v1 allows only one pending command per
-  // device at a time (backend 409s if one's already pending, see device_commands.go).
-  enqueueCommand: (token, deviceId, action) => request(`/v1/devices/${deviceId}/commands`, { method: "POST", token, body: { action } }),
+  // device at a time (backend 409s if one's already pending, see device_commands.go). `params`
+  // is only used by "run-custom-command" ({commandText, actor}) - omitted for the original 6
+  // fixed actions, which need nothing beyond the action id itself.
+  enqueueCommand: (token, deviceId, action, params) => request(`/v1/devices/${deviceId}/commands`, { method: "POST", token, body: params ? { action, params } : { action } }),
+  // The one new read endpoint remote command execution needs - full stdout/stderr can be far
+  // larger than the truncated summary that fits in the events feed's own message (see
+  // backend/device_commands.go's handleGetDeviceCommand).
+  getDeviceCommand: (token, deviceId, commandId) => request(`/v1/tenants/${TENANT_ID}/devices/${deviceId}/commands/${commandId}`, { token }),
 
   // Real data that already existed device-scoped only, now exposed admin-wide (see backend's
   // live.go "Admin-facing views" section).
@@ -85,6 +91,12 @@ export const api = {
   // hardcoded Go constant, now readable/writable here.
   getOfflineThreshold: (token) => request(`/v1/tenants/${TENANT_ID}/settings/offline-threshold`, { token }),
   updateOfflineThreshold: (token, minutes) => request(`/v1/tenants/${TENANT_ID}/settings/offline-threshold`, { method: "PATCH", token, body: { minutes } }),
+
+  // Remote command/PowerShell execution's own tenant-level kill switch (backend/settings.go) -
+  // a second, independent gate on top of the plan entitlement (see getEntitlement's own
+  // features list) - both must be true before Device 360's Advanced panel even renders.
+  getRemoteCommandExecutionSetting: (token) => request(`/v1/tenants/${TENANT_ID}/settings/remote-command-execution`, { token }),
+  updateRemoteCommandExecutionSetting: (token, enabled) => request(`/v1/tenants/${TENANT_ID}/settings/remote-command-execution`, { method: "PATCH", token, body: { enabled } }),
 
   // Real alert-rule CRUD (backend/alert_rules.go), evaluated against real live telemetry by
   // backend/alert_engine.go's own real sweep loop - not a client-side rule engine.

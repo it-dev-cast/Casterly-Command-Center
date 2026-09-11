@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   SlidersHorizontal, WifiOff, BellRing, Trash2, Plug, ShieldCheck, Copy, Check, Server, Radio,
-  Waves, RefreshCw, ArrowRight, SunMoon, Sun, Moon, Monitor, Globe, History, Info,
+  Waves, RefreshCw, ArrowRight, SunMoon, Sun, Moon, Monitor, Globe, History, Info, Terminal,
 } from "lucide-react";
 import { BACKEND_URL, TENANT_ID, api } from "../lib/api.js";
 import { shortDeviceTag } from "../lib/deviceId.js";
@@ -109,6 +109,12 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Remote command/PowerShell execution's own tenant-level kill switch (backend/settings.go) -
+  // this feature's second, independent gate on top of the plan entitlement (see Device 360's
+  // Advanced panel, which checks both).
+  const [remoteCmdEnabled, setRemoteCmdEnabled] = useState(false);
+  const [remoteCmdLoading, setRemoteCmdLoading] = useState(true);
+  const [remoteCmdSaving, setRemoteCmdSaving] = useState(false);
 
   const [rules, setRules] = useState([]);
   const [rulesLoading, setRulesLoading] = useState(true);
@@ -188,6 +194,35 @@ export default function Settings() {
       .catch((e) => setLoadError(e.message))
       .finally(() => setLoading(false));
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    setRemoteCmdLoading(true);
+    api.getRemoteCommandExecutionSetting(token)
+      .then((res) => setRemoteCmdEnabled(res.enabled))
+      .catch(() => {})
+      .finally(() => setRemoteCmdLoading(false));
+  }, [token]);
+
+  async function handleToggleRemoteCommandExecution() {
+    const next = !remoteCmdEnabled;
+    setRemoteCmdSaving(true);
+    try {
+      const res = await api.updateRemoteCommandExecutionSetting(token, next);
+      setRemoteCmdEnabled(res.enabled);
+      pushToast(
+        "success",
+        res.enabled ? "Remote command execution enabled" : "Remote command execution disabled",
+        res.enabled
+          ? "Device 360's Advanced panel now appears for devices whose plan also includes this feature."
+          : "Device 360's Advanced panel is now hidden fleet-wide, regardless of plan.",
+      );
+    } catch (e) {
+      pushToast("error", "Save failed", e.message);
+    } finally {
+      setRemoteCmdSaving(false);
+    }
+  }
 
   async function handleSave() {
     const minutes = Number(inputValue);
@@ -563,6 +598,37 @@ export default function Settings() {
                       {saving ? "Saving…" : "Save"}
                     </button>
                     {!dirty && <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>Currently {threshold} minute{threshold !== 1 ? "s" : ""}</span>}
+                  </div>
+                )}
+              </div>
+
+              <div className="card" style={{ marginTop: 20, border: remoteCmdEnabled ? "1px solid var(--red)" : undefined }}>
+                <div className="section-head">
+                  <div>
+                    <h3 className="section-title">Remote Command Execution</h3>
+                    <p className="section-sub">
+                      Lets Device 360 run arbitrary PowerShell with full system privilege on an enrolled device{" "}
+                      <Info
+                        size={12}
+                        color="var(--text-faint)"
+                        style={{ cursor: "help", verticalAlign: -2 }}
+                        title="Second, independent gate on top of this tenant's plan entitlement - both must be on before Device 360's Advanced panel appears for any device. Defaults off."
+                      />
+                    </p>
+                  </div>
+                  <Terminal size={18} color={remoteCmdEnabled ? "var(--red)" : "var(--text-faint)"} />
+                </div>
+
+                {remoteCmdLoading ? (
+                  <div className="empty-note">Loading current setting…</div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+                    <button className="btn" onClick={handleToggleRemoteCommandExecution} disabled={remoteCmdSaving}>
+                      {remoteCmdSaving ? "Saving…" : remoteCmdEnabled ? "Disable" : "Enable"}
+                    </button>
+                    <span style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+                      Currently {remoteCmdEnabled ? "enabled" : "disabled"} — also requires this tenant's plan to include the feature.
+                    </span>
                   </div>
                 )}
               </div>
